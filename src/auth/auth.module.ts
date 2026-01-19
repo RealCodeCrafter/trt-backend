@@ -14,11 +14,19 @@ import { RolesGuard } from './roles.guard';
     TypeOrmModule.forFeature([User]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        global: true,
-        secret: configService.get('JWT_SECRET'),
-        signOptions: { expiresIn: configService.get('JWT_EXPIRES_IN') },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const isProd = configService.get<string>('NODE_ENV') === 'production';
+        const secret = configService.get<string>('JWT_SECRET');
+        if (isProd && !secret) {
+          throw new Error('JWT_SECRET must be set in production');
+        }
+
+        return {
+          global: true,
+          secret,
+          signOptions: { expiresIn: configService.get('JWT_EXPIRES_IN') || '1d' },
+        };
+      },
       inject: [ConfigService],
     }),
   ],

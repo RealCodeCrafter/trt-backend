@@ -5,19 +5,28 @@ Loyihani ishga tushirish uchun `.env` fayl yarating va quyidagi ma'lumotlarni ki
 ## .env fayl yaratish
 
 Loyiha ildizida `.env` fayl yarating va quyidagi ma'lumotlarni kiriting:
+(`env.example` fayldan copy qilib olishingiz mumkin)
 
 ```env
+# Runtime
+NODE_ENV=development
+
 # Database Configuration
 DB_TYPE=postgres
-DB_HOST=nozomi.proxy.rlwy.net
-DB_PORT=43482
+DB_HOST=localhost
+DB_PORT=5432
 DB_USERNAME=postgres
-DB_PASSWORD=RsGzZbKHlZwrLakJWmsKolSNEXwUgZVU
-DB_DATABASE=railway
+DB_PASSWORD=CHANGE_ME
+DB_DATABASE=car_parts
 DB_SSL=false
 
+# TypeORM
+# Development'da migrate qilmasdan tez ishlash uchun `true` bo'lishi mumkin,
+# Production'da esa `false` bo'lishi shart!
+DB_SYNC=true
+
 # JWT Configuration
-JWT_SECRET=juda_secret_key
+JWT_SECRET=CHANGE_ME
 JWT_EXPIRES_IN=1d
 
 # Server Configuration
@@ -25,17 +34,26 @@ PORT=7000
 HOST=0.0.0.0
 BASE_URL=http://localhost:7000
 
-# SuperAdmin Configuration
-# DIQQAT: Username va Password avtomatik yaratiladi (kuchli va murakkab)
-# Faqat email ni belgilash mumkin
-SUPERADMIN_EMAIL=superadmin@trt-parts.com
+# CORS (production uchun majburiy)
+# Bir nechta domen bo'lsa vergul bilan yozing:
+# CORS_ORIGIN=https://app.example.com,https://admin.example.com
+CORS_ORIGIN=http://localhost:3000
+
+# Swagger
+# Development'da avtomatik yoqilgan (NODE_ENV=development).
+# Production'da yoqish uchun: SWAGGER_ENABLE=true
+SWAGGER_ENABLE=true
+SWAGGER_PATH=docs
+# Production'da Swagger'ni himoyalash uchun:
+SWAGGER_USER=admin
+SWAGGER_PASS=CHANGE_ME_STRONG_PASSWORD
 
 # Email Configuration (Gmail)
 EMAIL_SERVICE=gmail
-EMAIL_USER=valireyimbergenov79@gmail.com
-EMAIL_PASS=mmewnxpntrxxsbvz
+EMAIL_USER=your@gmail.com
+EMAIL_PASS=GMAIL_APP_PASSWORD
 EMAIL_FROM=sales@trt-parts.com
-EMAIL_TO=reyimbergenovvali702@gmail.com
+EMAIL_TO=contact@trt-parts.com
 
 # Upload Configuration
 UPLOAD_DIR=uploads
@@ -57,13 +75,21 @@ CONTACT_ADDRESS=Toshkent, Chilanzar, 45-uy
 
 - `.env` fayl `.gitignore` da bo'lishi kerak (xavfsizlik uchun)
 - Production'da barcha ma'lumotlarni o'zgartiring
-- Email parolini xavfsiz saqlang
+- Email parolini xavfsiz saqlang (Gmail uchun App Password ishlating)
+- Production'da `DB_SYNC=false` va `CORS_ORIGIN` ni aniq domen(lar) bilan belgilang
+- `JWT_SECRET` kuchli va uzun bo'lishi kerak
 
-## SuperAdmin avtomatik yaratiladi
+## SuperAdmin (faqat DB orqali qo'lda)
 
-SuperAdmin username va password avtomatik yaratiladi:
-- **Username**: `superadmin_<random>_<timestamp>` formatida (masalan: `superadmin_k3j9x2_abc123`)
-- **Password**: 24 belgili kuchli parol (katta/kichik harflar, raqamlar, maxsus belgilar)
-- **Email**: `.env` fayldan o'qiladi yoki default: `superadmin@trt-parts.com`
+Xavfsizlik uchun superadmin **avtomatik yaratilmaydi**. Superadminni faqat bazadan qo'lda yarating:
 
-Kod run bo'lganda console'da login ma'lumotlari ko'rsatiladi. Bu ma'lumotlarni xavfsiz saqlang!
+- `role`: `superAdmin`
+- `password`: bcrypt hash (10 salt round)
+
+Parol hash olish uchun (loyiha ichida):
+
+```bash
+node -e "require('bcrypt').hash('YOUR_PASSWORD', 10).then(console.log)"
+```
+
+Keyin DB'ga `users` jadvaliga `username/email/password/role` ni qo'lda kiritasiz.

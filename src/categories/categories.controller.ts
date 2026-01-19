@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiParam, ApiTags } from '@nestjs/swagger';
 import { CategoryService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -9,6 +10,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 
+@ApiTags('Categories')
 @Controller('categories')
 export class CategoriesController {
   constructor(private readonly categoryService: CategoryService) {}
@@ -16,6 +18,26 @@ export class CategoriesController {
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('superAdmin', 'admin')
   @Post()
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['translations'],
+      properties: {
+        translations: {
+          type: 'string',
+          description:
+            'JSON string. Example: {"en":{"name":"Brake Parts","description":"..."},"ru":{"name":"...","description":"..."}}',
+        },
+        parts: { type: 'string', description: 'JSON number array string. Example: [1,2,3]' },
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  })
   @UseInterceptors(
     FilesInterceptor('images', 20, {
       storage: diskStorage({
@@ -47,6 +69,7 @@ export class CategoriesController {
   }
 
   @Get(':id')
+  @ApiParam({ name: 'id', required: true, type: Number })
   async findOne(@Param('id') id: string) {
     return await this.categoryService.findOne(+id);
   }
@@ -54,6 +77,22 @@ export class CategoriesController {
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('superAdmin', 'admin')
   @Patch(':id')
+  @ApiBearerAuth('bearer')
+  @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'id', required: true, type: Number })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        translations: { type: 'string', description: 'JSON string' },
+        parts: { type: 'string', description: 'JSON number array string' },
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  })
   @UseInterceptors(
     FilesInterceptor('images', 20, {
       storage: diskStorage({
@@ -83,6 +122,8 @@ export class CategoriesController {
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('superAdmin', 'admin')
   @Delete(':id')
+  @ApiBearerAuth('bearer')
+  @ApiParam({ name: 'id', required: true, type: Number })
   async remove(@Param('id') id: string) {
     return await this.categoryService.remove(+id);
   }

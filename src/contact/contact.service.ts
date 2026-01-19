@@ -79,7 +79,6 @@ Bu xabar TRT-Parts veb-sayti orqali yuborilgan
       await transporter.sendMail(mailOptions);
       return { message: 'Xabar muvaffaqiyatli yuborildi' };
     } catch (error) {
-      console.error('Email yuborishda xatolik:', error);
       throw new InternalServerErrorException('Xabar yuborishda xatolik yuz berdi');
     }
   }

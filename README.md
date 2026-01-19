@@ -26,6 +26,20 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Swagger (API Docs)
+
+Swagger UI avtomatik generatsiya qilinadi:
+
+- URL (default): `http://localhost:7000/docs`
+- Bearer token: Swagger UI'da **Authorize** bosib, `Bearer <token>` ni kiriting
+
+### Environment
+
+`.env` uchun muhim sozlamalar:
+
+- `SWAGGER_ENABLE`: production’da Swagger yoqish uchun `true`
+- `SWAGGER_PATH`: default `docs`
+
 ## Project setup
 
 ```bash

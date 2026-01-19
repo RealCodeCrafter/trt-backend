@@ -46,7 +46,7 @@ export class CategoryService {
         }
       }
     } catch (error) {
-      console.error('Rasm o\'chirishda xatolik:', error);
+      // Production xavfsizligi uchun xatolikni console'ga chiqarmaymiz
     }
   }
 

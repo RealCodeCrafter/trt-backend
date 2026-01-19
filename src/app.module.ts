@@ -1,4 +1,4 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
@@ -12,7 +12,6 @@ import { AuthModule } from './auth/auth.module';
 import { PartsModule } from './parts/parts.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ContactModule } from './contact/contact.module';
-import { AuthService } from './auth/auth.service';
 
 @Module({
   imports: [
@@ -27,6 +26,7 @@ import { AuthService } from './auth/auth.service';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
+        const isProd = configService.get<string>('NODE_ENV') === 'production';
         const dbType = configService.get<string>('DB_TYPE') as any;
         const dbHost = configService.get<string>('DB_HOST');
         const dbPort = parseInt(configService.get<string>('DB_PORT') || '43482');
@@ -34,6 +34,8 @@ import { AuthService } from './auth/auth.service';
         const dbPassword = configService.get<string>('DB_PASSWORD');
         const dbDatabase = configService.get<string>('DB_DATABASE');
         const useSSL = configService.get<string>('DB_SSL') === 'true';
+        const dbSyncEnv = configService.get<string>('DB_SYNC');
+        const synchronize = dbSyncEnv ? dbSyncEnv === 'true' : !isProd;
 
         const config: any = {
           type: dbType,
@@ -43,7 +45,7 @@ import { AuthService } from './auth/auth.service';
           password: dbPassword,
           database: dbDatabase,
           entities: [Part, User, Category],
-          synchronize: true,
+          synchronize,
           autoLoadEntities: true,
         };
 
@@ -64,10 +66,4 @@ import { AuthService } from './auth/auth.service';
     ContactModule,
   ],
 })
-export class AppModule implements OnModuleInit {
-  constructor(private readonly authService: AuthService) {}
-
-  async onModuleInit() {
-    await this.authService.createSuperAdminIfNotExists();
-  }
-}
+export class AppModule {}
