@@ -68,12 +68,14 @@ async function bootstrap() {
   if (isProd && corsOrigins.length === 0) {
     throw new Error('CORS_ORIGIN must be set in production (comma-separated list)');
   }
+  const allowAllOrigins = corsOrigins.includes('*');
 
   app.use(
     cors({
-      origin: isProd ? corsOrigins : '*',
+      // CORS_ORIGIN=* bo'lsa hamma originlarga ruxsat beriladi (lekin credentials mumkin emas)
+      origin: allowAllOrigins ? '*' : isProd ? corsOrigins : '*',
       // Wildcard origin bilan credentials ishlatish xavfli va brauzerlar bloklaydi
-      credentials: isProd,
+      credentials: allowAllOrigins ? false : isProd,
     }),
   );
 
