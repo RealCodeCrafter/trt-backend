@@ -5,6 +5,7 @@ import { ValidationPipe } from '@nestjs/common';
 import * as cors from 'cors';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NextFunction, Request, Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 
 function parseCorsOrigins(value?: string): string[] {
   if (!value) return [];
@@ -14,11 +15,17 @@ function parseCorsOrigins(value?: string): string[] {
     .filter(Boolean);
 }
 
+function normalizePathSegment(value: string): string {
+  // '/docs/' -> 'docs'
+  const normalized = value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+  return normalized || 'docs';
+}
+
 function timingSafeEqualString(a: string, b: string): boolean {
   const aBuf = Buffer.from(a);
   const bBuf = Buffer.from(b);
   if (aBuf.length !== bBuf.length) return false;
-  return Buffer.compare(aBuf, bBuf) === 0;
+  return timingSafeEqual(aBuf, bBuf);
 }
 
 function createSwaggerBasicAuthMiddleware(user: string, pass: string) {
@@ -81,7 +88,8 @@ async function bootstrap() {
 
   const swaggerEnabled = !isProd || configService.get<string>('SWAGGER_ENABLE') === 'true';
   if (swaggerEnabled) {
-    const swaggerPath = configService.get<string>('SWAGGER_PATH') || 'docs';
+    const swaggerPath = normalizePathSegment(configService.get<string>('SWAGGER_PATH') || 'docs');
+    const swaggerMountPath = `/${swaggerPath}`;
 
     // Production'da Swagger'ni Basic Auth bilan himoyalash tavsiya qilinadi
     const swaggerUser = configService.get<string>('SWAGGER_USER');
@@ -90,7 +98,10 @@ async function bootstrap() {
       if (!swaggerUser || !swaggerPass) {
         throw new Error('SWAGGER_USER and SWAGGER_PASS must be set when SWAGGER is enabled in production');
       }
-      app.use(`/${swaggerPath}`, createSwaggerBasicAuthMiddleware(swaggerUser, swaggerPass));
+      const swaggerAuth = createSwaggerBasicAuthMiddleware(swaggerUser, swaggerPass);
+      // UI va OpenAPI JSON ham himoyalansin
+      app.use(swaggerMountPath, swaggerAuth);
+      app.use(`${swaggerMountPath}-json`, swaggerAuth);
     }
 
     const swaggerConfig = new DocumentBuilder()
@@ -109,7 +120,7 @@ async function bootstrap() {
       .build();
 
     const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup(swaggerPath, app, document, {
+    SwaggerModule.setup(swaggerMountPath, app, document, {
       swaggerOptions: {
         persistAuthorization: true,
       },
