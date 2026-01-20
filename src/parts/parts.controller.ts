@@ -205,7 +205,11 @@ export class PartsController {
 
   @Get()
   @ApiQuery({ name: 'value', required: false, type: String })
-  async searchByName(@Query('value') name: string) {
+  async searchByName(@Query('value') name?: string) {
+    // Swagger/frontend /products ni query'siz chaqirganda ham 500 bo'lmasin
+    if (!name || !name.trim()) {
+      return await this.partsService.findAll();
+    }
     return await this.partsService.searchByName(name);
   }
 

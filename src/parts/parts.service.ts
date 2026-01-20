@@ -376,6 +376,11 @@ export class PartsService {
   }
 
   async searchByName(name: string) {
+    // Himoya: name kelmasa /products list sifatida ishlasin
+    if (!name || !name.trim()) {
+      return await this.findAll();
+    }
+
     const parts = await this.partsRepository
       .createQueryBuilder('part')
       .leftJoinAndSelect('part.categories', 'category')
