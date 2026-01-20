@@ -95,7 +95,10 @@ export class CategoryService {
   }
 
   async findAll() {
-    const categories = await this.categoryRepository.find();
+    const categories = await this.categoryRepository.find({
+      relations: ['parts'],
+      order: { id: 'ASC' },
+    });
     if (!categories.length) {
       throw new NotFoundException('Hech qanday kategoriya topilmadi');
     }
@@ -103,7 +106,7 @@ export class CategoryService {
       id: category.id,
       translations: category.translations,
       images: category.images,
-      parts: category.parts,
+      parts: [...(category.parts || [])].sort((a, b) => a.id - b.id),
     }));
   }
 
@@ -116,7 +119,7 @@ export class CategoryService {
       id: category.id,
       translations: category.translations,
       images: category.images,
-      parts: category.parts,
+      parts: [...(category.parts || [])].sort((a, b) => a.id - b.id),
     };
   }
 
@@ -181,7 +184,7 @@ export class CategoryService {
       id: updatedCategory.id,
       translations: updatedCategory.translations,
       images: updatedCategory.images,
-      parts: updatedCategory.parts,
+      parts: [...(updatedCategory.parts || [])].sort((a, b) => a.id - b.id),
     };
   }
 

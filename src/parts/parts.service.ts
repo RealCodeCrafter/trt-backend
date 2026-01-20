@@ -102,7 +102,7 @@ export class PartsService {
       years: savedPart.years,
       trtCode: savedPart.trtCode,
       brand: savedPart.brand,
-      categories: savedPart.categories.map(category => ({
+      categories: [...(savedPart.categories || [])].sort((a, b) => a.id - b.id).map(category => ({
         id: category.id,
         translations: category.translations,
         images: category.images,
@@ -131,7 +131,7 @@ export class PartsService {
       years: part.years,
       trtCode: part.trtCode,
       brand: part.brand,
-      categories: part.categories.map(category => ({
+      categories: [...(part.categories || [])].sort((a, b) => a.id - b.id).map(category => ({
         id: category.id,
         translations: category.translations,
         images: category.images,
@@ -155,7 +155,7 @@ export class PartsService {
       years: part.years,
       trtCode: part.trtCode,
       brand: part.brand,
-      categories: part.categories.map(category => ({
+      categories: [...(part.categories || [])].sort((a, b) => a.id - b.id).map(category => ({
         id: category.id,
         translations: category.translations,
         images: category.images,
@@ -227,7 +227,7 @@ export class PartsService {
       years: updatedPart.years,
       trtCode: updatedPart.trtCode,
       brand: updatedPart.brand,
-      categories: updatedPart.categories.map(category => ({
+      categories: [...(updatedPart.categories || [])].sort((a, b) => a.id - b.id).map(category => ({
         id: category.id,
         translations: category.translations,
         images: category.images,
@@ -266,7 +266,7 @@ export class PartsService {
         translations: category.translations,
         images: category.images,
       },
-      parts: category.parts.map(part => ({
+      parts: [...(category.parts || [])].sort((a, b) => a.id - b.id).map(part => ({
         id: part.id,
         sku: part.sku,
         translations: part.translations,
@@ -320,6 +320,7 @@ export class PartsService {
     const queryBuilder = this.partsRepository
       .createQueryBuilder('part')
       .leftJoinAndSelect('part.categories', 'category');
+    queryBuilder.orderBy('part.id', 'ASC');
 
     if (oem) {
       queryBuilder.andWhere(':oem = ANY(LOWER(part.oem::text)::text[])', { oem: oem.toLowerCase() });
@@ -354,7 +355,7 @@ export class PartsService {
       years: part.years,
       trtCode: part.trtCode,
       brand: part.brand,
-      categories: (part.categories || []).map(category => ({
+      categories: [...(part.categories || [])].sort((a, b) => a.id - b.id).map(category => ({
         id: category.id,
         translations: category.translations,
         images: category.images,
@@ -381,6 +382,7 @@ export class PartsService {
       .where('LOWER(part.translations->>\'en\'->>\'name\') LIKE :name OR LOWER(part.translations->>\'ru\'->>\'name\') LIKE :name', {
         name: `%${name.toLowerCase()}%`,
       })
+      .orderBy('part.id', 'ASC')
       .getMany();
 
     if (parts.length === 0) {
@@ -398,7 +400,7 @@ export class PartsService {
       years: part.years,
       trtCode: part.trtCode,
       brand: part.brand,
-      categories: (part.categories || []).map(category => ({
+      categories: [...(part.categories || [])].sort((a, b) => a.id - b.id).map(category => ({
         id: category.id,
         translations: category.translations,
         images: category.images,
