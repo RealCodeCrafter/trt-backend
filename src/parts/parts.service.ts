@@ -308,12 +308,19 @@ export class PartsService {
   }
 
   async getBrand(brand: string) {
+    const normalizedBrand = this.normalizeParam(brand);
+    if (!normalizedBrand) return [];
     const models = await this.partsRepository
       .createQueryBuilder('part')
       .select('DISTINCT unnest(part.model) as model')
-      .where('part.brand = :brand', { brand })
+      .where('LOWER(REPLACE(part.brand, \'+\', \' \')) = :brand', { brand: normalizedBrand.toLowerCase() })
       .getRawMany();
     return models.map((row) => row.model).filter(Boolean);
+  }
+
+  private normalizeParam(value: string): string {
+    if (!value || typeof value !== 'string') return value;
+    return value.replace(/\+/g, ' ').trim();
   }
 
   async search(oem: string, trt: string, brand: string, model: string) {
@@ -323,19 +330,23 @@ export class PartsService {
     queryBuilder.orderBy('part.id', 'ASC');
 
     if (oem) {
-      queryBuilder.andWhere(':oem = ANY(LOWER(part.oem::text)::text[])', { oem: oem.toLowerCase() });
+      const normalizedOem = this.normalizeParam(oem);
+      queryBuilder.andWhere(':oem = ANY(LOWER(part.oem::text)::text[])', { oem: normalizedOem.toLowerCase() });
     }
 
     if (model) {
-      queryBuilder.andWhere(':model = ANY(LOWER(part.model::text)::text[])', { model: model.toLowerCase() });
+      const normalizedModel = this.normalizeParam(model);
+      queryBuilder.andWhere(':model = ANY(LOWER(part.model::text)::text[])', { model: normalizedModel.toLowerCase() });
     }
 
     if (trt) {
-      queryBuilder.andWhere('LOWER(part.trtCode) = :trt', { trt: trt.toLowerCase() });
+      const normalizedTrt = this.normalizeParam(trt);
+      queryBuilder.andWhere('LOWER(part.trtCode) = :trt', { trt: normalizedTrt.toLowerCase() });
     }
 
     if (brand) {
-      queryBuilder.andWhere('LOWER(part.brand) = :brand', { brand: brand.toLowerCase() });
+      const normalizedBrand = this.normalizeParam(brand);
+      queryBuilder.andWhere('LOWER(REPLACE(part.brand, \'+\', \' \')) = :brand', { brand: normalizedBrand.toLowerCase() });
     }
 
     const parts = await queryBuilder.getMany();
