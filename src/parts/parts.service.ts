@@ -346,7 +346,7 @@ export class PartsService {
 
     if (brand) {
       const normalizedBrand = this.normalizeParam(brand);
-      queryBuilder.andWhere('LOWER(REPLACE(part.brand, \'+\', \' \')) = :brand', { brand: normalizedBrand.toLowerCase() });
+      queryBuilder.andWhere(':brand = ANY(SELECT LOWER(REPLACE(unnest(part.carName), \'+\', \' \')))', { brand: normalizedBrand.toLowerCase() });
     }
 
     const parts = await queryBuilder.getMany();
