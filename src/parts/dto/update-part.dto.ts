@@ -91,14 +91,48 @@ export class UpdatePartDto {
   brand?: string;
 
   @Transform(({ value }) => {
+    if (!value) return [];
+    
+    // Agar string bo'lsa
     if (typeof value === 'string') {
+      // PostgreSQL array formatini qayta ishlash: "{3}" yoki "{3,4,5}"
+      if (value.startsWith('{') && value.endsWith('}')) {
+        const content = value.slice(1, -1).trim();
+        if (!content) return [];
+        return content.split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+      }
+      
+      // JSON array formatini qayta ishlash: "[3]" yoki "[3,4,5]"
       try {
-        return JSON.parse(value);
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          return parsed.map(v => typeof v === 'string' ? parseInt(v) : v).filter(v => !isNaN(v));
+        }
+        return [parseInt(parsed)].filter(v => !isNaN(v));
       } catch {
-        return value ? [parseInt(value)] : [];
+        // Oddiy raqam string: "3"
+        const num = parseInt(value);
+        return isNaN(num) ? [] : [num];
       }
     }
-    return Array.isArray(value) ? value.map(v => typeof v === 'string' ? parseInt(v) : v) : value ? [parseInt(value)] : [];
+    
+    // Agar array bo'lsa
+    if (Array.isArray(value)) {
+      return value.map(v => {
+        if (typeof v === 'string') {
+          const num = parseInt(v);
+          return isNaN(num) ? null : num;
+        }
+        return typeof v === 'number' ? v : null;
+      }).filter(v => v !== null);
+    }
+    
+    // Agar number bo'lsa
+    if (typeof value === 'number') {
+      return [value];
+    }
+    
+    return [];
   })
   @IsArray()
   @IsOptional()

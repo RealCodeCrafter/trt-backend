@@ -211,8 +211,8 @@ export class PartsService {
     part.trtCode = updatePartDto.trtCode || part.trtCode;
     part.brand = updatePartDto.brand || part.brand;
 
-    if (updatePartDto.categories) {
-      part.categories = await this.categoriesRepository.findBy({ id: updatePartDto.categories as any });
+    if (updatePartDto.categories && updatePartDto.categories.length > 0) {
+      part.categories = await this.categoriesRepository.findBy({ id: In(updatePartDto.categories) });
     }
 
     const updatedPart = await this.partsRepository.save(part);
