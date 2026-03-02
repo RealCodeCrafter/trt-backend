@@ -331,22 +331,28 @@ export class PartsService {
 
     if (oem) {
       const normalizedOem = this.normalizeParam(oem);
-      queryBuilder.andWhere(':oem = ANY(LOWER(part.oem::text)::text[])', { oem: normalizedOem.toLowerCase() });
+      queryBuilder.andWhere('EXISTS (SELECT 1 FROM unnest(part.oem) AS oem_item WHERE LOWER(oem_item) LIKE :oem)', { 
+        oem: `%${normalizedOem.toLowerCase()}%` 
+      });
     }
 
     if (model) {
       const normalizedModel = this.normalizeParam(model);
-      queryBuilder.andWhere(':model = ANY(LOWER(part.model::text)::text[])', { model: normalizedModel.toLowerCase() });
+      queryBuilder.andWhere('EXISTS (SELECT 1 FROM unnest(part.model) AS model_item WHERE LOWER(model_item) LIKE :model)', { 
+        model: `%${normalizedModel.toLowerCase()}%` 
+      });
     }
 
     if (trt) {
       const normalizedTrt = this.normalizeParam(trt);
-      queryBuilder.andWhere('LOWER(part.trtCode) = :trt', { trt: normalizedTrt.toLowerCase() });
+      queryBuilder.andWhere('LOWER(part.trtCode) LIKE :trt', { trt: `%${normalizedTrt.toLowerCase()}%` });
     }
 
     if (brand) {
       const normalizedBrand = this.normalizeParam(brand);
-      queryBuilder.andWhere(':brand = ANY(SELECT LOWER(REPLACE(unnest(part.carName), \'+\', \' \')))', { brand: normalizedBrand.toLowerCase() });
+      queryBuilder.andWhere('EXISTS (SELECT 1 FROM unnest(part.carName) AS car_name WHERE LOWER(REPLACE(car_name, \'+\', \' \')) LIKE :brand)', { 
+        brand: `%${normalizedBrand.toLowerCase()}%` 
+      });
     }
 
     const parts = await queryBuilder.getMany();
