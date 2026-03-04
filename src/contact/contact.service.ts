@@ -1,105 +1,147 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { CreateContactDto } from './dto/create-contact.dto';
+import { Injectable } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import { existsSync, mkdirSync, appendFileSync } from 'fs';
+import { join } from 'path';
+import { CreateContactDto } from './dto/create-contact.dto';
 
 @Injectable()
 export class ContactService {
-  constructor(private readonly configService: ConfigService) {}
+  private createTransporter() {
+    const port = Number(process.env.SMTP_PORT) || 25;
+    const useSecure = process.env.SMTP_SECURE === 'true' || port === 465;
+    const host = process.env.SMTP_HOST_IP || process.env.SMTP_HOST || '127.0.0.1';
 
-  async sendMessage(createContactDto: CreateContactDto) {
+    console.log(`📧 SMTP sozlamalari: ${host}:${port}, secure: ${useSecure}`);
+
+    return nodemailer.createTransport({
+      host: host,
+      port: port,
+      secure: useSecure,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1',
+        maxVersion: 'TLSv1.3',
+      },
+      requireTLS: true,
+      ignoreTLS: false,
+      logger: process.env.NODE_ENV === 'development',
+      debug: process.env.NODE_ENV === 'development',
+      connectionTimeout: 300000,
+      greetingTimeout: 120000,
+      socketTimeout: 300000,
+      pool: false,
+      maxConnections: 1,
+      maxMessages: 1,
+    } as any);
+  }
+
+  async sendEmail(data: CreateContactDto) {
+    const s = (val?: string) => val?.toString().trim() || '—';
+
+    const mailOptions = {
+      from: `"TRT-Parts Contact" <${process.env.SMTP_USER}>`,
+      to: process.env.CONTACT_EMAIL,
+      subject: `TRT-Parts – Yangi xabar: ${s(data.name)}`,
+      html: `
+        <h2>TRT-Parts saytidan yangi kontakt so‘rovi</h2>
+        <p><strong>Ism:</strong> ${s(data.name)}</p>
+        <p><strong>Telefon:</strong> ${s(data.phone)}</p>
+        <p><strong>Izoh:</strong></p>
+        <div style="background:#f5f5f5;padding:15px;border-left:4px solid #1a1a1a;white-space:pre-line;">
+          ${s(data.comment)}
+        </div>
+        <hr>
+        <small><strong>Vaqt:</strong> ${new Date().toLocaleString('uz-UZ')}</small>
+      `,
+      text: `
+TRT-Parts saytidan yangi kontakt so'rovi
+
+Ism: ${s(data.name)}
+Telefon: ${s(data.phone)}
+Izoh:
+${s(data.comment)}
+
+Vaqt: ${new Date().toLocaleString('uz-UZ')}
+      `.trim(),
+    };
+
+    let lastError: any;
+    const maxAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const transporter = this.createTransporter();
+      try {
+        const info = await transporter.sendMail(mailOptions);
+        console.log('📨 TRT-Parts contact email yuborildi:', info.messageId);
+        transporter.close();
+        return info;
+      } catch (error: any) {
+        lastError = error;
+        console.log(
+          `⚠️ TRT-Parts email yuborishda xato (urinish ${attempt}/${maxAttempts}): ${
+            error?.message || "Noma'lum xato"
+          } (${error?.code || 'UNKNOWN'})`,
+        );
+
+        try {
+          transporter.close();
+        } catch {}
+
+        if (attempt < maxAttempts) {
+          const waitTime = attempt * 5000;
+          console.log(`   ${waitTime / 1000}s keyin qayta urinilmoqda...`);
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
+        }
+      }
+    }
+
+    console.error('❌ TRT-Parts email yuborishda barcha urinishlar muvaffaqiyatsiz:', lastError);
+    throw lastError;
+  }
+
+  async sendEmailAsync(data: CreateContactDto) {
+    const timestamp = new Date().toISOString();
+    const logData = {
+      timestamp,
+      name: data.name,
+      phone: data.phone,
+    };
+
     try {
-      const transporter = nodemailer.createTransport({
-        service: this.configService.get('EMAIL_SERVICE') || 'gmail',
-        auth: {
-          user: this.configService.get('EMAIL_USER'),
-          pass: this.configService.get('EMAIL_PASS'),
-        },
-      });
-
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #1a1a1a; color: #fff; padding: 20px; text-align: center; }
-            .content { background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
-            .info-row { margin: 15px 0; padding: 10px; background-color: #fff; border-left: 4px solid #1a1a1a; }
-            .label { font-weight: bold; color: #1a1a1a; }
-            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>TRT-Parts</h1>
-              <p>Yangi xabar</p>
-            </div>
-            <div class="content">
-              <div class="info-row">
-                <span class="label">Ism:</span> ${createContactDto.name}
-              </div>
-              <div class="info-row">
-                <span class="label">Telefon:</span> ${createContactDto.phone}
-              </div>
-              <div class="info-row">
-                <span class="label">Izoh:</span><br>
-                ${createContactDto.comment.replace(/\n/g, '<br>')}
-              </div>
-            </div>
-            <div class="footer">
-              <p>Bu xabar TRT-Parts veb-sayti orqali yuborilgan</p>
-              <p>&copy; ${new Date().getFullYear()} TRT-Parts. Barcha huquqlar himoyalangan.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-
-      const mailOptions = {
-        from: `"TRT-Parts" <${this.configService.get('EMAIL_FROM')}>`,
-        to: this.configService.get('EMAIL_TO'),
-        subject: `TRT-Parts - Yangi xabar: ${createContactDto.name}`,
-        text: `
-TRT-Parts - Yangi xabar
-
-Ism: ${createContactDto.name}
-Telefon: ${createContactDto.phone}
-Izoh: ${createContactDto.comment}
-
----
-Bu xabar TRT-Parts veb-sayti orqali yuborilgan
-        `,
-        html: htmlContent,
-      };
-
-      await transporter.sendMail(mailOptions);
-      return { message: 'Xabar muvaffaqiyatli yuborildi' };
-    } catch (error) {
-      throw new InternalServerErrorException('Xabar yuborishda xatolik yuz berdi');
+      this.logEmail('START', logData, 'TRT-Parts email yuborish boshlandi');
+      const info = await this.sendEmail(data);
+      this.logEmail('SUCCESS', logData, `Email muvaffaqiyatli yuborildi: ${info.messageId}`);
+      return info;
+    } catch (error: any) {
+      const fullError = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+      this.logEmail(
+        'ERROR',
+        logData,
+        `Xato: ${error?.message || "Noma'lum xato"} | Code: ${error?.code || 'UNKNOWN'} | Response: ${
+          error?.response || "yo'q"
+        }`,
+      );
+      console.error('❌ TRT-Parts EMAIL YUBORISHDAGI XATO:', fullError);
     }
   }
 
-  async getContactInfo() {
-    return {
-      title: 'Biz bilan bog\'lanish',
-      contacts: 'Kontaktlar',
-      description: 'Biz bilan bog\'lanish uchun quyidagi ma\'lumotlarni ishlating',
-      phone_label: 'Telefon',
-      phone: this.configService.get('CONTACT_PHONE') || '+998901234567',
-      email: this.configService.get('CONTACT_EMAIL') || 'contact@trt-parts.com',
-      address: this.configService.get('CONTACT_ADDRESS') || 'Toshkent, Chilanzar, 45-uy',
-      form_title: 'Xabar yuborish',
-      name_label: 'Ism',
-      phone_label_form: 'Telefon raqami',
-      comment_label: 'Izoh',
-      submit_button: 'Yuborish',
-      data_processing_consent: 'Ma\'lumotlarimni qayta ishlashga roziman',
-      company_name: 'TRT-Parts',
-      company_description: 'Avtomobil ehtiyot qismlari yetkazib beruvchi kompaniya',
-    };
+  private logEmail(status: 'START' | 'SUCCESS' | 'ERROR', data: any, message: string) {
+    try {
+      const logsDir = join(__dirname, '..', '..', 'logs');
+      if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true });
+
+      const logFile = join(
+        logsDir,
+        `contact-trt-${new Date().toISOString().split('T')[0]}.log`,
+      );
+      const logMessage = `[${data.timestamp}] [${status}] ${data.name} | ${data.phone} | ${message}\n`;
+      appendFileSync(logFile, logMessage, 'utf8');
+    } catch (logError) {
+      console.error('TRT-Parts contact log yozishda xato:', logError);
+    }
   }
 }

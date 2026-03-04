@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get } from '@nestjs/common';
+import { Controller, Post, Body } from '@nestjs/common';
 import { ApiBody, ApiTags } from '@nestjs/swagger';
 import { ContactService } from './contact.service';
 import { CreateContactDto } from './dto/create-contact.dto';
@@ -10,12 +10,14 @@ export class ContactController {
 
   @Post()
   @ApiBody({ type: CreateContactDto })
-  async sendMessage(@Body() createContactDto: CreateContactDto) {
-    return await this.contactService.sendMessage(createContactDto);
-  }
+  async submit(@Body() createContactDto: CreateContactDto) {
+    this.contactService.sendEmailAsync(createContactDto).catch((error) => {
+      console.error('Background email yuborishda xato:', error);
+    });
 
-  @Get()
-  async getContactInfo() {
-    return await this.contactService.getContactInfo();
+    return {
+      success: true,
+      message: 'Xabar qabul qilindi va yuborilmoqda!',
+    };
   }
 }
