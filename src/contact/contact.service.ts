@@ -9,7 +9,7 @@ export class ContactService {
   private createTransporter() {
     const port = Number(process.env.SMTP_PORT) || 25;
     const useSecure = process.env.SMTP_SECURE === 'true' || port === 465;
-    const host = process.env.SMTP_HOST_IP || process.env.SMTP_HOST || '127.0.0.1';
+    const host = process.env.SMTP_HOST || '127.0.0.1';
 
     console.log(`📧 SMTP sozlamalari: ${host}:${port}, secure: ${useSecure}`);
 
