@@ -1,9 +1,10 @@
-import { Controller, Post, UploadedFile, UploadedFiles, UseInterceptors, BadRequestException, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, UploadedFile, UploadedFiles, UseInterceptors, BadRequestException, UseGuards, Param, Res, NotFoundException } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiConsumes, ApiBody, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiConsumes, ApiBody, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { Response } from 'express';
 import { FilesService } from './files.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -107,5 +108,46 @@ export class FilesController {
       throw new BadRequestException('Fayllar yuborilmadi');
     }
     return await this.filesService.uploadFiles(files);
+  }
+
+  @Get('view/:fileName')
+  @ApiOperation({ summary: 'Faylni ko\'rish (telefonda ham ishlaydi)' })
+  @ApiParam({ name: 'fileName', required: true, type: String })
+  @ApiResponse({ status: 200, description: 'Fayl muvaffaqiyatli yuklandi' })
+  async viewFile(@Param('fileName') fileName: string, @Res() res: Response) {
+    const filePath = this.filesService.getFilePath(fileName);
+    if (!filePath) {
+      throw new NotFoundException('Fayl topilmadi');
+    }
+    
+    // Telefonda ko'rish uchun to'g'ri headerlar
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Content-Type', this.getContentType(fileName));
+    
+    return res.sendFile(filePath);
+  }
+
+  private getContentType(fileName: string): string {
+    const ext = extname(fileName).toLowerCase();
+    const mimeTypes: { [key: string]: string } = {
+      '.pdf': 'application/pdf',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.mp4': 'video/mp4',
+      '.mp3': 'audio/mpeg',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.txt': 'text/plain',
+      '.html': 'text/html',
+      '.css': 'text/css',
+      '.js': 'application/javascript',
+      '.json': 'application/json',
+    };
+    return mimeTypes[ext] || 'application/octet-stream';
   }
 }

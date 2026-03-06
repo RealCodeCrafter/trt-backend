@@ -1,7 +1,7 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
 @Injectable()
 export class FilesService {
@@ -16,7 +16,7 @@ export class FilesService {
 
   getFileUrl(filename: string): string {
     const baseUrl = this.configService.get<string>('BASE_URL') || 'http://localhost:7000';
-    return `${baseUrl}/uploads/files/${filename}`;
+    return `${baseUrl}/files/view/${filename}`;
   }
 
   async uploadFile(file: Express.Multer.File): Promise<{ url: string }> {
@@ -37,5 +37,16 @@ export class FilesService {
     return files.map(file => ({
       url: this.getFileUrl(file.filename),
     }));
+  }
+
+  getFilePath(fileName: string): string | null {
+    if (!fileName) {
+      return null;
+    }
+    const filePath = resolve(this.uploadsDir, fileName);
+    if (existsSync(filePath)) {
+      return filePath;
+    }
+    return null;
   }
 }
