@@ -1,17 +1,23 @@
-import { Controller, Post, UploadedFile, UploadedFiles, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { Controller, Post, UploadedFile, UploadedFiles, UseInterceptors, BadRequestException, UseGuards } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiConsumes, ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiConsumes, ApiBody, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { FilesService } from './files.service';
+import { AuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decarotor';
 
 @ApiTags('Files')
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('superAdmin', 'admin')
   @Post('upload')
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Bitta fayl yuklash (500 MB limit)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -54,7 +60,10 @@ export class FilesController {
     return await this.filesService.uploadFile(file);
   }
 
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('superAdmin', 'admin')
   @Post('upload/multiple')
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Bir nechta fayl yuklash (har biri 500 MB limit)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({

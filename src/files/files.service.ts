@@ -19,29 +19,23 @@ export class FilesService {
     return `${baseUrl}/uploads/files/${filename}`;
   }
 
-  async uploadFile(file: Express.Multer.File): Promise<{ url: string; filename: string; size: number; mimetype: string }> {
+  async uploadFile(file: Express.Multer.File): Promise<{ url: string }> {
     if (!file) {
       throw new BadRequestException('Fayl yuborilmadi');
     }
 
     return {
       url: this.getFileUrl(file.filename),
-      filename: file.filename,
-      size: file.size,
-      mimetype: file.mimetype,
     };
   }
 
-  async uploadFiles(files: Express.Multer.File[]): Promise<Array<{ url: string; filename: string; size: number; mimetype: string }>> {
+  async uploadFiles(files: Express.Multer.File[]): Promise<Array<{ url: string }>> {
     if (!files || files.length === 0) {
       throw new BadRequestException('Fayllar yuborilmadi');
     }
 
     return files.map(file => ({
       url: this.getFileUrl(file.filename),
-      filename: file.filename,
-      size: file.size,
-      mimetype: file.mimetype,
     }));
   }
 }
