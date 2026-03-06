@@ -59,8 +59,26 @@ function createSwaggerBasicAuthMiddleware(user: string, pass: string) {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    bodyParser: true,
+    rawBody: false,
+  });
   const configService = app.get(ConfigService);
+
+  // Body size limit: 500 MB
+  app.use((req, res, next) => {
+    if (req.headers['content-length']) {
+      const contentLength = parseInt(req.headers['content-length'], 10);
+      const maxSize = 500 * 1024 * 1024; // 500 MB
+      if (contentLength > maxSize) {
+        return res.status(413).json({
+          statusCode: 413,
+          message: 'Fayl hajmi 500 MB dan katta bo\'lishi mumkin emas',
+        });
+      }
+    }
+    next();
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
