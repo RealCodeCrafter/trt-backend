@@ -45,27 +45,27 @@ export class ContactService {
     const mailOptions = {
       from: `"TRT-Parts Contact" <${process.env.SMTP_USER}>`,
       to: process.env.CONTACT_EMAIL,
-      subject: `TRT-Parts – Yangi xabar: ${s(data.name)}`,
+      subject: `TRT-Parts – Новое сообщение: ${s(data.name)}`,
       html: `
-        <h2>TRT-Parts saytidan yangi kontakt so‘rovi</h2>
-        <p><strong>Ism:</strong> ${s(data.name)}</p>
-        <p><strong>Telefon:</strong> ${s(data.phone)}</p>
-        <p><strong>Izoh:</strong></p>
+        <h2>Новая заявка с сайта TRT-Parts</h2>
+        <p><strong>Имя:</strong> ${s(data.name)}</p>
+        <p><strong>Телефон:</strong> ${s(data.phone)}</p>
+        <p><strong>Комментарий:</strong></p>
         <div style="background:#f5f5f5;padding:15px;border-left:4px solid #1a1a1a;white-space:pre-line;">
           ${s(data.comment)}
         </div>
         <hr>
-        <small><strong>Vaqt:</strong> ${new Date().toLocaleString('uz-UZ')}</small>
+        <small><strong>Время отправки:</strong> ${new Date().toLocaleString('ru-RU')}</small>
       `,
       text: `
-TRT-Parts saytidan yangi kontakt so'rovi
+Новая заявка с сайта TRT-Parts
 
-Ism: ${s(data.name)}
-Telefon: ${s(data.phone)}
-Izoh:
+Имя: ${s(data.name)}
+Телефон: ${s(data.phone)}
+Комментарий:
 ${s(data.comment)}
 
-Vaqt: ${new Date().toLocaleString('uz-UZ')}
+Время отправки: ${new Date().toLocaleString('ru-RU')}
       `.trim(),
     };
 
