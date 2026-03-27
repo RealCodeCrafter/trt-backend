@@ -1,4 +1,3 @@
-// analytics.service.ts
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
@@ -37,7 +36,8 @@ export class AnalyticsService {
     const jsonString = this.configService.get<string>('GA4_SERVICE_ACCOUNT_JSON');
     if (jsonString) return JSON.parse(jsonString);
 
-    const file = this.configService.get<string>('GA4_SERVICE_ACCOUNT_FILE') || this.configService.get<string>('GA4_SERVICE_ACCOUNT_PATH');
+    const file = this.configService.get<string>('GA4_SERVICE_ACCOUNT_FILE') ||
+                 this.configService.get<string>('GA4_SERVICE_ACCOUNT_PATH');
     if (!file) throw new BadRequestException('GA4_SERVICE_ACCOUNT_FILE yoki GA4_SERVICE_ACCOUNT_PATH env sozlanmagan');
 
     const fullPath = path.isAbsolute(file) ? file : path.resolve(process.cwd(), file);
@@ -55,7 +55,7 @@ export class AnalyticsService {
     return Number.isFinite(n) ? n : null;
   }
 
-  // Kunlik statistika (pastga `days = 1`) yoki oylik (pastga `days = 30`) uchun ishlatiladi
+  // days = kunlar soni, topLimit = eng ko‘p ko‘rilgan sahifalar soni
   async getAnalytics(days: number = 7, topLimit: number = 10): Promise<AnalyticsResponse> {
     const end = new Date();
     const start = new Date(end.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
