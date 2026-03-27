@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>GA4 Test</title>
+
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-YTZVYJD42G"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      window.__gaDebug = [];
+
+      function __gaSetDebug(text) {
+        const el = document.getElementById('ga-debug');
+        if (el) el.textContent = text;
+      }
+
+      function gtag() {
+        // Sahifada “GA ishlayapti” degan real signallarni ko‘rsatish uchun debug log.
+        window.__gaDebug.push({
+          t: new Date().toISOString(),
+          args: Array.from(arguments),
+        });
+
+        try {
+          window.dataLayer.push(arguments);
+        } catch (e) {
+          // hech narsa qilish shart emas
+        }
+
+        const last = window.__gaDebug[window.__gaDebug.length - 1];
+        __gaSetDebug('gtag() chaqirildi: ' + JSON.stringify(last.args));
+      }
+
+      gtag('js', new Date());
+      gtag('config', 'G-YTZVYJD42G', { send_page_view: true });
+    </script>
+  </head>
+  <body>
+    <h1>Google Analytics GA4 Test sahifa</h1>
+    <p>Bu sahifada GA faqat fon uchun ishlaydi. Real-time’ni GA4’da ko‘ring.</p>
+    <p id="ga-status">GA holati: tekshirilmoqda...</p>
+
+    <pre
+      id="ga-debug"
+      style="
+        background:#0b1220;
+        color:#d1e7ff;
+        padding:12px;
+        border-radius:8px;
+        white-space:pre-wrap;
+        word-break:break-word;
+        max-width:900px;
+      "
+    >GA debug: kutyapman...</pre>
+
+    <hr style="margin:16px 0; border:none; border-top:1px solid #22304b;" />
+
+    <h2 style="margin:0 0 8px 0; font-size:18px;">Oxirgi 7 kun (Site widget)</h2>
+    <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr;">
+      <div>
+        <strong>Active users:</strong> <span id="ga-activeUsers">-</span>
+      </div>
+      <div>
+        <strong>Page views:</strong> <span id="ga-pageViews">-</span>
+      </div>
+      <div>
+        <strong>Event count:</strong> <span id="ga-eventCount">-</span>
+      </div>
+      <div>
+        <strong>Range:</strong> <span id="ga-range">-</span>
+      </div>
+    </div>
+
+    <h3 style="margin:14px 0 8px 0; font-size:16px;">Eng ko‘p ko‘rilgan sahifalar (last 7 days)</h3>
+    <ul id="ga-recentPages" style="margin:0; padding-left:18px;"></ul>
+    <p id="ga-widget-error" style="color:#ff9aa2; font-weight:600;"></p>
+
+    <script>
+      // Brauzerga vizual signal berish (GA qanday ishlashini ko'rish uchun).
+      window.addEventListener('load', () => {
+        const el = document.getElementById('ga-status');
+        if (el) el.textContent = 'GA tag qo‘shildi. Console/Network’dan collect ketayotganini tekshiring.';
+
+        const el2 = document.getElementById('ga-debug');
+        if (el2) el2.textContent = (window.__gaDebug && window.__gaDebug.length)
+          ? ('GA debug oxirgi call: ' + JSON.stringify(window.__gaDebug[window.__gaDebug.length - 1].args))
+          : 'GA debug: hali hech qanday gtag() chaqiruvi yo‘q';
+        console.log('GA4 test page loaded, gtag:', typeof window.gtag === 'function');
+      });
+    </script>
+
+    <script>
+      // GA4 Data API orqali oxirgi 7 kun statistikasini olib sahifaga chiqaramiz.
+      (async () => {
+        try {
+          const res = await fetch('/analytics/widget?days=7&limit=10');
+          if (!res.ok) throw new Error('Widget fetch failed: ' + res.status);
+          const data = await res.json();
+
+          document.getElementById('ga-activeUsers').textContent =
+            data?.summary?.activeUsers ?? '-';
+          document.getElementById('ga-pageViews').textContent =
+            data?.summary?.pageViews ?? '-';
+          document.getElementById('ga-eventCount').textContent =
+            data?.summary?.eventCount ?? '-';
+
+          document.getElementById('ga-range').textContent =
+            data?.range ? (data.range.startDate + ' → ' + data.range.endDate) : '-';
+
+          const ul = document.getElementById('ga-recentPages');
+          if (ul) {
+            ul.innerHTML = '';
+            const pages = data?.recentPages || [];
+            if (!pages.length) {
+              const li = document.createElement('li');
+              li.textContent = 'Sahifalar topilmadi';
+              ul.appendChild(li);
+            } else {
+              pages.forEach((p) => {
+                const li = document.createElement('li');
+                li.textContent = (p.pagePath || '(unknown)') + ' — ' + (p.pageViews ?? 0);
+                ul.appendChild(li);
+              });
+            }
+          }
+        } catch (e) {
+          const el = document.getElementById('ga-widget-error');
+          if (el) el.textContent = 'Widget xato: ' + (e?.message || e);
+        }
+      })();
+    </script>
+  </body>
+</html>
