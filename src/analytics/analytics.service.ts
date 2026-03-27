@@ -7,7 +7,6 @@ import { google } from 'googleapis';
 type Summary = {
   activeUsers: number | null;
   pageViews: number | null;
-  eventCount: number | null;
 };
 
 type CountryStats = {
@@ -18,7 +17,6 @@ type CountryStats = {
 type AnalyticsResponse = {
   range: { startDate: string; endDate: string };
   summary: Summary;
-  topPages: { pagePath: string; pageViews: number }[];
   byCountry: CountryStats[];
 };
 
@@ -55,8 +53,7 @@ export class AnalyticsService {
     return Number.isFinite(n) ? n : null;
   }
 
-  // days = kunlar soni, topLimit = eng ko‘p ko‘rilgan sahifalar soni
-  async getAnalytics(days: number = 7, topLimit: number = 10): Promise<AnalyticsResponse> {
+  async getAnalytics(days: number): Promise<AnalyticsResponse> {
     const end = new Date();
     const start = new Date(end.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
     const startDate = this.toYyyyMmDd(start);
@@ -72,7 +69,7 @@ export class AnalyticsService {
     const analyticsData = google.analyticsdata('v1beta');
     const authClient = await auth.getClient();
 
-    // 1) Umumiy statistika
+    // 1) Umumiy statistika: activeUsers va pageViews
     const summaryResp = await analyticsData.properties.runReport({
       property,
       requestBody: {
@@ -80,7 +77,6 @@ export class AnalyticsService {
         metrics: [
           { name: 'activeUsers' },
           { name: 'screenPageViews' },
-          { name: 'eventCount' },
         ],
       },
       auth: authClient as any,
@@ -90,28 +86,9 @@ export class AnalyticsService {
     const summary: Summary = {
       activeUsers: this.parseNumber(firstRow?.metricValues?.[0]?.value),
       pageViews: this.parseNumber(firstRow?.metricValues?.[1]?.value),
-      eventCount: this.parseNumber(firstRow?.metricValues?.[2]?.value),
     };
 
-    // 2) Top sahifalar
-    const pagesResp = await analyticsData.properties.runReport({
-      property,
-      requestBody: {
-        dateRanges: [{ startDate, endDate }],
-        dimensions: [{ name: 'pagePath' }],
-        metrics: [{ name: 'screenPageViews' }],
-        orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
-        limit: topLimit,
-      },
-      auth: authClient as any,
-    });
-
-    const topPages = (pagesResp.data.rows || []).map(r => ({
-      pagePath: r.dimensionValues?.[0]?.value || '(unknown)',
-      pageViews: Number(r.metricValues?.[0]?.value || 0),
-    }));
-
-    // 3) Country bo‘yicha statistika
+    // 2) Country bo‘yicha statistika
     const countryResp = await analyticsData.properties.runReport({
       property,
       requestBody: {
@@ -128,6 +105,6 @@ export class AnalyticsService {
       users: Number(r.metricValues?.[0]?.value || 0),
     }));
 
-    return { range: { startDate, endDate }, summary, topPages, byCountry };
+    return { range: { startDate, endDate }, summary, byCountry };
   }
 }

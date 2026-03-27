@@ -1,4 +1,4 @@
-import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 import { ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
 
@@ -7,26 +7,12 @@ import { AnalyticsService } from './analytics.service';
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
-  @Get('daily')
-  @ApiResponse({ status: 200, description: 'Har kunlik sayt statistika' })
-  async getDaily(@Query('limit') limit?: string) {
-    const l = limit ? parseInt(limit, 10) : 10;
-    return await this.analyticsService.getAnalytics(1, l);
-  }
+  @Get('stats')
+  @ApiResponse({ status: 200, description: 'Kunlik va oylik statistikani qaytaradi' })
+  async getStats() {
+    const daily = await this.analyticsService.getAnalytics(1); // Kunlik
+    const monthly = await this.analyticsService.getAnalytics(30); // Oylik (shu oy boshidan hozirgacha)
 
-  @Get('monthly')
-  @ApiResponse({ status: 200, description: 'Har oylik sayt statistika' })
-  async getMonthly(@Query('limit') limit?: string) {
-    const l = limit ? parseInt(limit, 10) : 10;
-    return await this.analyticsService.getAnalytics(30, l);
-  }
-
-  // /analytics/widget endpoint: HTML faylini o‘zgartirmasdan ishlashi uchun
-  @Get('widget')
-  @ApiResponse({ status: 200, description: 'Oxirgi 7 kunlik statistikani qaytaradi' })
-  async getWidget(@Query('days') days?: string, @Query('limit') limit?: string) {
-    const d = days ? parseInt(days, 10) : 7;
-    const l = limit ? parseInt(limit, 10) : 10;
-    return await this.analyticsService.getAnalytics(d, l);
+    return { daily, monthly };
   }
 }
