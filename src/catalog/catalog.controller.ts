@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -67,6 +68,25 @@ export class CatalogController {
   )
   create(@Body() dto: CreateCatalogItemDto, @UploadedFile() photo?: Express.Multer.File) {
     return this.catalogService.create(dto, photo);
+  }
+
+  @Post('import/excel')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  importExcel(@UploadedFile() file?: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('Excel file yuborilmadi');
+    }
+    return this.catalogService.importFromExcel(file);
   }
 
   @Get()

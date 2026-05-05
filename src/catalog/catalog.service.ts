@@ -7,6 +7,7 @@ import { join } from 'path';
 import { CreateCatalogItemDto } from './dto/create-catalog-item.dto';
 import { UpdateCatalogItemDto } from './dto/update-catalog-item.dto';
 import { CatalogItem } from './entities/catalog-item.entity';
+import * as XLSX from 'xlsx';
 
 @Injectable()
 export class CatalogService {
@@ -43,6 +44,42 @@ export class CatalogService {
 
   private normalizeTrtNo(value: string): string {
     return value.trim().toUpperCase();
+  }
+
+  private parseArrayCell(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value.map((v) => String(v).trim()).filter(Boolean);
+    }
+    if (value === null || value === undefined) return [];
+
+    const str = String(value).trim();
+    if (!str) return [];
+
+    if (str.startsWith('[') && str.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(str);
+        if (Array.isArray(parsed)) {
+          return parsed.map((v) => String(v).trim()).filter(Boolean);
+        }
+      } catch {
+        // Fallback split below
+      }
+    }
+
+    return str
+      .split(/,|\n|;/)
+      .map((v) => v.replace(/"/g, '').trim())
+      .filter(Boolean);
+  }
+
+  private pickValue(row: Record<string, unknown>, keys: string[]): string {
+    for (const key of keys) {
+      const value = row[key];
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        return String(value).trim();
+      }
+    }
+    return '';
   }
 
   private deletePhotoFile(photoUrl?: string | null): void {
@@ -207,5 +244,96 @@ export class CatalogService {
 
     const items = await queryBuilder.getMany();
     return items.map((item) => this.toResponse(item));
+  }
+
+  async importFromExcel(file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('Excel fayl yuborilmadi');
+    }
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const firstSheet = workbook.SheetNames[0];
+    if (!firstSheet) {
+      throw new BadRequestException('Excel varaqasi topilmadi');
+    }
+
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[firstSheet], {
+      defval: '',
+      raw: false,
+    });
+
+    let created = 0;
+    let skipped = 0;
+    const errors: Array<{ row: number; reason: string }> = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNumber = i + 2;
+
+      const trtNo = this.pickValue(row, ['TRT №', 'TRT No', 'TRT N', 'TRT']);
+      const englishName = this.pickValue(row, ['ENGLISH NAME', 'English Name']);
+      const russianName = this.pickValue(row, ['RUSSIAN NAME', 'Russian Name']);
+
+      if (!trtNo || !englishName || !russianName) {
+        skipped++;
+        errors.push({ row: rowNumber, reason: 'Majburiy ustunlar yoq (TRT/ENGLISH/RUSSIAN)' });
+        continue;
+      }
+
+      const normalizedTrtNo = this.normalizeTrtNo(trtNo);
+      const duplicate = await this.catalogRepository
+        .createQueryBuilder('item')
+        .where('LOWER(item.trtNo) = LOWER(:trtNo)', { trtNo: normalizedTrtNo })
+        .getOne();
+
+      if (duplicate) {
+        skipped++;
+        errors.push({ row: rowNumber, reason: `Duplicate TRT No: ${normalizedTrtNo}` });
+        continue;
+      }
+
+      const oemNo = this.parseArrayCell(this.pickValue(row, ['OEM №', 'OEM No', 'OEM']));
+      const carName = this.parseArrayCell(this.pickValue(row, ['CAR NAME', 'Car Name']));
+      const model = this.parseArrayCell(this.pickValue(row, ['MODEL', 'Model']));
+      const years = this.parseArrayCell(this.pickValue(row, ['YEARS', 'Years']));
+      const contents = this.pickValue(row, ['CONTENTS', 'Contents']);
+      const ctrNo = this.pickValue(row, ['CTR №', 'CTR No', 'CTR']);
+      const lemforderNo = this.pickValue(row, ['LEMFÖRDER №', 'LEMFORDER №', 'LEMFORDER No', 'LEMFORDER']);
+      const groupName = this.pickValue(row, ['Gruppa nomenklatur', 'GROUP NAME', 'Group Name']);
+      const startOfSales = this.pickValue(row, ['Start of sales', 'START OF SALES']);
+      const weightRaw = this.pickValue(row, ['WEIGHT PER PC (KG)', 'WEIGHTPER PC(KG)', 'WEIGHT PER PC KG']);
+      const weightPerPcKg = weightRaw ? Number(weightRaw.replace(',', '.')) : undefined;
+
+      const item = this.catalogRepository.create({
+        trtNo: normalizedTrtNo,
+        oemNo,
+        ctrNo: ctrNo || undefined,
+        lemforderNo: lemforderNo || undefined,
+        englishName,
+        contents: contents || undefined,
+        russianName,
+        carName,
+        model,
+        years,
+        groupName: groupName || undefined,
+        startOfSales: startOfSales || undefined,
+        weightPerPcKg: Number.isFinite(weightPerPcKg) ? weightPerPcKg : undefined,
+      });
+
+      try {
+        await this.catalogRepository.save(item);
+        created++;
+      } catch {
+        skipped++;
+        errors.push({ row: rowNumber, reason: 'Saqlashda xatolik' });
+      }
+    }
+
+    return {
+      totalRows: rows.length,
+      created,
+      skipped,
+      errors,
+    };
   }
 }
