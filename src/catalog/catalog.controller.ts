@@ -8,16 +8,12 @@ import {
   Post,
   Query,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiConsumes, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
-import { AuthGuard } from '../auth/auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decarotor';
 import { CatalogService } from './catalog.service';
 import { CreateCatalogItemDto } from './dto/create-catalog-item.dto';
 import { UpdateCatalogItemDto } from './dto/update-catalog-item.dto';
@@ -27,10 +23,7 @@ import { UpdateCatalogItemDto } from './dto/update-catalog-item.dto';
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
 
-  @UseGuards(AuthGuard, RolesGuard)
-  @Roles('superAdmin', 'admin')
   @Post()
-  @ApiBearerAuth('bearer')
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -105,10 +98,7 @@ export class CatalogController {
     return this.catalogService.findOne(+id);
   }
 
-  @UseGuards(AuthGuard, RolesGuard)
-  @Roles('superAdmin', 'admin')
   @Patch(':id')
-  @ApiBearerAuth('bearer')
   @ApiConsumes('multipart/form-data')
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({
@@ -158,10 +148,7 @@ export class CatalogController {
     return this.catalogService.update(+id, dto, photo);
   }
 
-  @UseGuards(AuthGuard, RolesGuard)
-  @Roles('superAdmin', 'admin')
   @Delete(':id')
-  @ApiBearerAuth('bearer')
   @ApiParam({ name: 'id', type: Number })
   remove(@Param('id') id: string) {
     return this.catalogService.remove(+id);
