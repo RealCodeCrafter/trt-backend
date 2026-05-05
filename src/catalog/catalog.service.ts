@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { existsSync, unlinkSync } from 'fs';
+import { join } from 'path';
 import { CreateCatalogItemDto } from './dto/create-catalog-item.dto';
 import { UpdateCatalogItemDto } from './dto/update-catalog-item.dto';
 import { CatalogItem } from './entities/catalog-item.entity';
@@ -39,14 +41,42 @@ export class CatalogService {
     };
   }
 
+  private normalizeTrtNo(value: string): string {
+    return value.trim().toUpperCase();
+  }
+
+  private deletePhotoFile(photoUrl?: string | null): void {
+    if (!photoUrl) return;
+
+    try {
+      const fileName = photoUrl.includes('/uploads/catalog/')
+        ? photoUrl.split('/uploads/catalog/').pop()
+        : photoUrl.split('/').pop();
+
+      if (!fileName) return;
+
+      const filePath = join(process.cwd(), 'uploads', 'catalog', fileName);
+      if (existsSync(filePath)) {
+        unlinkSync(filePath);
+      }
+    } catch {
+      // Fayl o'chirishda xato bo'lsa ham API oqimini to'xtatmaymiz
+    }
+  }
+
   async create(dto: CreateCatalogItemDto, photo?: Express.Multer.File) {
-    const exists = await this.catalogRepository.findOne({ where: { trtNo: dto.trtNo } });
+    const normalizedTrtNo = this.normalizeTrtNo(dto.trtNo);
+    const exists = await this.catalogRepository
+      .createQueryBuilder('item')
+      .where('LOWER(item.trtNo) = LOWER(:trtNo)', { trtNo: normalizedTrtNo })
+      .getOne();
+
     if (exists) {
-      throw new BadRequestException(`TRT No ${dto.trtNo} allaqachon mavjud`);
+      throw new BadRequestException(`TRT No ${normalizedTrtNo} allaqachon mavjud`);
     }
 
     const item = this.catalogRepository.create({
-      trtNo: dto.trtNo,
+      trtNo: normalizedTrtNo,
       oemNo: dto.oemNo || [],
       ctrNo: dto.ctrNo,
       lemforderNo: dto.lemforderNo,
@@ -62,8 +92,16 @@ export class CatalogService {
       groupName: dto.groupName,
     });
 
-    const saved = await this.catalogRepository.save(item);
-    return this.toResponse(saved);
+    try {
+      const saved = await this.catalogRepository.save(item);
+      return this.toResponse(saved);
+    } catch (error: any) {
+      // PostgreSQL unique violation
+      if (error?.code === '23505') {
+        throw new BadRequestException(`TRT No ${normalizedTrtNo} allaqachon mavjud`);
+      }
+      throw error;
+    }
   }
 
   async findAll() {
@@ -82,11 +120,15 @@ export class CatalogService {
     if (!item) throw new NotFoundException('Mahsulot topilmadi');
 
     if (dto.trtNo) {
-      const duplicate = await this.catalogRepository.findOne({ where: { trtNo: dto.trtNo } });
+      const normalizedTrtNo = this.normalizeTrtNo(dto.trtNo);
+      const duplicate = await this.catalogRepository
+        .createQueryBuilder('item')
+        .where('LOWER(item.trtNo) = LOWER(:trtNo)', { trtNo: normalizedTrtNo })
+        .getOne();
       if (duplicate && duplicate.id !== id) {
-        throw new BadRequestException(`TRT No ${dto.trtNo} allaqachon mavjud`);
+        throw new BadRequestException(`TRT No ${normalizedTrtNo} allaqachon mavjud`);
       }
-      item.trtNo = dto.trtNo;
+      item.trtNo = normalizedTrtNo;
     }
 
     if (dto.oemNo) item.oemNo = dto.oemNo;
@@ -101,7 +143,10 @@ export class CatalogService {
     if (dto.weightPerPcKg !== undefined) item.weightPerPcKg = dto.weightPerPcKg;
     if (dto.startOfSales !== undefined) item.startOfSales = dto.startOfSales;
     if (dto.groupName !== undefined) item.groupName = dto.groupName;
-    if (photo) item.photo = this.getImageUrl(photo.filename);
+    if (photo) {
+      this.deletePhotoFile(item.photo);
+      item.photo = this.getImageUrl(photo.filename);
+    }
 
     const updated = await this.catalogRepository.save(item);
     return this.toResponse(updated);
@@ -110,6 +155,7 @@ export class CatalogService {
   async remove(id: number) {
     const item = await this.catalogRepository.findOne({ where: { id } });
     if (!item) throw new NotFoundException('Mahsulot topilmadi');
+    this.deletePhotoFile(item.photo);
     await this.catalogRepository.delete(id);
     return { message: "Mahsulot o'chirildi" };
   }
