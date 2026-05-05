@@ -72,6 +72,15 @@ export class CatalogService {
       .filter(Boolean);
   }
 
+  private normalizePhotoValue(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    return this.getImageUrl(trimmed);
+  }
+
   private pickValue(row: Record<string, unknown>, keys: string[]): string {
     for (const key of keys) {
       const value = row[key];
@@ -300,6 +309,7 @@ export class CatalogService {
       const ctrNo = this.pickValue(row, ['CTR №', 'CTR No', 'CTR']);
       const lemforderNo = this.pickValue(row, ['LEMFÖRDER №', 'LEMFORDER №', 'LEMFORDER No', 'LEMFORDER']);
       const groupName = this.pickValue(row, ['Gruppa nomenklatur', 'GROUP NAME', 'Group Name']);
+      const photoRaw = this.pickValue(row, ['FOTO', 'PHOTO', 'Photo', 'photo']);
       const startOfSales = this.pickValue(row, ['Start of sales', 'START OF SALES']);
       const weightRaw = this.pickValue(row, ['WEIGHT PER PC (KG)', 'WEIGHTPER PC(KG)', 'WEIGHT PER PC KG']);
       const weightPerPcKg = weightRaw ? Number(weightRaw.replace(',', '.')) : undefined;
@@ -315,6 +325,7 @@ export class CatalogService {
         carName,
         model,
         years,
+        photo: photoRaw ? this.normalizePhotoValue(photoRaw) : undefined,
         groupName: groupName || undefined,
         startOfSales: startOfSales || undefined,
         weightPerPcKg: Number.isFinite(weightPerPcKg) ? weightPerPcKg : undefined,
