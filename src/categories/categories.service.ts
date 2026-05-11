@@ -95,18 +95,29 @@ export class CategoryService {
   }
 
   async findAll() {
-    const categories = await this.categoryRepository.find({
-      relations: ['parts'],
+    const categories = (await this.categoryRepository.find({
+      loadRelationIds: { relations: ['parts'] },
       order: { id: 'ASC' },
-    });
+    })) as Array<Category & { parts: number[] }>;
+
     if (!categories.length) {
       throw new NotFoundException('Hech qanday kategoriya topilmadi');
     }
+
+    const uniquePartIds = [...new Set(categories.flatMap((category) => category.parts || []))];
+    const parts = uniquePartIds.length
+      ? await this.partRepository.findBy({ id: In(uniquePartIds) })
+      : [];
+    const partsById = new Map(parts.map((part) => [part.id, part]));
+
     return categories.map(category => ({
       id: category.id,
       translations: category.translations,
       images: category.images,
-      parts: [...(category.parts || [])].sort((a, b) => a.id - b.id),
+      parts: ((category.parts as unknown as number[]) || [])
+        .map((partId) => partsById.get(partId))
+        .filter((part): part is Part => Boolean(part))
+        .sort((a, b) => a.id - b.id),
     }));
   }
 
