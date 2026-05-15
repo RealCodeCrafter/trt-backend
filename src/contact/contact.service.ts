@@ -49,6 +49,7 @@ export class ContactService {
       html: `
         <h2>Новая заявка с сайта TRT-Parts</h2>
         <p><strong>Имя:</strong> ${s(data.name)}</p>
+        <p><strong>Email:</strong> ${s(data.email)}</p>
         <p><strong>Телефон:</strong> ${s(data.phone)}</p>
         <p><strong>Комментарий:</strong></p>
         <div style="background:#f5f5f5;padding:15px;border-left:4px solid #1a1a1a;white-space:pre-line;">
@@ -61,6 +62,7 @@ export class ContactService {
 Новая заявка с сайта TRT-Parts
 
 Имя: ${s(data.name)}
+Email: ${s(data.email)}
 Телефон: ${s(data.phone)}
 Комментарий:
 ${s(data.comment)}
@@ -108,6 +110,7 @@ ${s(data.comment)}
     const logData = {
       timestamp,
       name: data.name,
+      email: data.email,
       phone: data.phone,
     };
 
@@ -138,7 +141,7 @@ ${s(data.comment)}
         logsDir,
         `contact-trt-${new Date().toISOString().split('T')[0]}.log`,
       );
-      const logMessage = `[${data.timestamp}] [${status}] ${data.name} | ${data.phone} | ${message}\n`;
+      const logMessage = `[${data.timestamp}] [${status}] ${data.name} | ${data.email} | ${data.phone} | ${message}\n`;
       appendFileSync(logFile, logMessage, 'utf8');
     } catch (logError) {
       console.error('TRT-Parts contact log yozishda xato:', logError);
