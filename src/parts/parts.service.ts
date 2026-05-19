@@ -401,7 +401,7 @@ export class PartsService {
     const parts = await this.partsRepository
       .createQueryBuilder('part')
       .leftJoinAndSelect('part.categories', 'category')
-      .where('LOWER(part.translations->>\'en\'->>\'name\') LIKE :name OR LOWER(part.translations->>\'ru\'->>\'name\') LIKE :name', {
+      .where('LOWER(part.translations->\'en\'->>\'name\') LIKE :name OR LOWER(part.translations->\'ru\'->>\'name\') LIKE :name', {
         name: `%${name.toLowerCase()}%`,
       })
       .orderBy('part.id', 'ASC')
