@@ -2,8 +2,9 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { existsSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { join, extname } from 'path';
+import * as JSZip from 'jszip';
 import { CreateCatalogItemDto } from './dto/create-catalog-item.dto';
 import { UpdateCatalogItemDto } from './dto/update-catalog-item.dto';
 import { CatalogItem } from './entities/catalog-item.entity';
@@ -89,6 +90,220 @@ export class CatalogService {
       }
     }
     return '';
+  }
+
+  private readonly catalogUploadDir = join(process.cwd(), 'uploads', 'catalog');
+
+  private normalizeHeaderLabel(value: unknown): string {
+    return String(value ?? '')
+      .replace(/\r?\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  }
+
+  private headerMatches(label: string, variants: string[]): boolean {
+    const normalized = this.normalizeHeaderLabel(label);
+    return variants.some((variant) => {
+      const target = this.normalizeHeaderLabel(variant);
+      return normalized === target || normalized.includes(target) || target.includes(normalized);
+    });
+  }
+
+  private isHeaderRow(row: unknown[]): boolean {
+    const labels = row.map((cell) => this.normalizeHeaderLabel(cell));
+    const hasTrt = labels.some((l) => l.includes('TRT'));
+    const hasOem = labels.some((l) => l.includes('OEM'));
+    const hasEnglish = labels.some((l) => l.includes('ENGLISH NAME'));
+    return hasTrt && hasOem && hasEnglish;
+  }
+
+  private isEmptyRow(row: unknown[]): boolean {
+    return row.every((cell) => !String(cell ?? '').trim());
+  }
+
+  private isHeaderLikeDataRow(trtRaw: string, englishName: string, russianName: string): boolean {
+    const trt = this.normalizeHeaderLabel(trtRaw);
+    const english = this.normalizeHeaderLabel(englishName);
+    const russian = this.normalizeHeaderLabel(russianName);
+    return (
+      (trt.includes('TRT') && trt.includes('№')) ||
+      (trt.includes('OEM') && trt.includes('№')) ||
+      english === 'ENGLISH NAME' ||
+      russian === 'RUSSIAN NAME'
+    );
+  }
+
+  private isTrtCodeValue(value: string): boolean {
+    const first = value.split(/\r?\n/)[0]?.trim() || '';
+    return /^R[0-9A-Z]/i.test(first);
+  }
+
+  private getRowCell(row: unknown[], index: number): string {
+    if (index < 0 || index >= row.length) return '';
+    const value = row[index];
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
+  }
+
+  private getRowNumber(row: unknown[], index: number): number | undefined {
+    if (index < 0 || index >= row.length) return undefined;
+    const value = row[index];
+    if (value === null || value === undefined || value === '') return undefined;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+    const parsed = Number(String(value).replace(',', '.').trim());
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private buildColumnMap(headerRow: unknown[]): Record<string, number> | null {
+    const map: Record<string, number> = {};
+
+    headerRow.forEach((cell, index) => {
+      const label = this.normalizeHeaderLabel(cell);
+      if (!label) return;
+
+      if (label.includes('TRT') && !label.includes('OEM')) map.trt = index;
+      else if (label.includes('OEM') && !label.includes('TRT')) map.oem = index;
+      else if (this.headerMatches(label, ['CTR №', 'CTR NO', 'CTR'])) map.ctr = index;
+      else if (this.headerMatches(label, ['LEMFÖRDER №', 'LEMFORDER №', 'LEMFORDER NO', 'LEMFORDER'])) {
+        map.lemforder = index;
+      } else if (this.headerMatches(label, ['ENGLISH NAME'])) map.englishName = index;
+      else if (this.headerMatches(label, ['CONTENTS'])) map.contents = index;
+      else if (this.headerMatches(label, ['RUSSIAN NAME'])) map.russianName = index;
+      else if (this.headerMatches(label, ['CAR NAME'])) map.carName = index;
+      else if (this.headerMatches(label, ['MODEL'])) map.model = index;
+      else if (this.headerMatches(label, ['YEARS'])) map.years = index;
+      else if (this.headerMatches(label, ['FOTO', 'PHOTO'])) map.foto = index;
+      else if (label.includes('WEIGHT') && label.includes('KG')) map.weight = index;
+      else if (this.headerMatches(label, ['START OF SALES'])) map.startOfSales = index;
+      else if (this.headerMatches(label, ['GRUPPA NOMENKLATUR', 'GROUP NAME'])) map.groupName = index;
+    });
+
+    if (map.trt === undefined || map.englishName === undefined || map.russianName === undefined) {
+      return null;
+    }
+
+    return map;
+  }
+
+  private resolveTrtAndOem(trtRaw: string, oemRaw: string): { trtNo: string; oemNo: string[] } {
+    const trtIsCode = this.isTrtCodeValue(trtRaw);
+    const oemIsCode = this.isTrtCodeValue(oemRaw);
+
+    if (oemIsCode && !trtIsCode) {
+      return {
+        trtNo: (oemRaw.split(/\r?\n/)[0] || '').trim(),
+        oemNo: this.parseArrayCell(trtRaw),
+      };
+    }
+
+    return {
+      trtNo: (trtRaw.split(/\r?\n/)[0] || '').trim(),
+      oemNo: this.parseArrayCell(oemRaw),
+    };
+  }
+
+  private getExcelBuffer(file: Express.Multer.File): Buffer {
+    if (file.buffer && file.buffer.length > 0) {
+      return file.buffer;
+    }
+
+    if (file.path && existsSync(file.path)) {
+      return readFileSync(file.path);
+    }
+
+    throw new BadRequestException('Excel fayl o\'qib bo\'lmadi (buffer yo\'q)');
+  }
+
+  private async extractExcelImages(fileBuffer: Buffer): Promise<{
+    byRow: Map<number, { data: Buffer; ext: string }>;
+    ordered: Array<{ data: Buffer; ext: string }>;
+  }> {
+    const byRow = new Map<number, { data: Buffer; ext: string }>();
+    const ordered: Array<{ data: Buffer; ext: string }> = [];
+
+    const zip = await JSZip.loadAsync(fileBuffer);
+
+    const mediaPaths = Object.keys(zip.files)
+      .filter((name) => {
+        if (!name.startsWith('xl/media/') || name.endsWith('/')) return false;
+        if (name.toLowerCase().includes('hdphoto')) return false;
+        return /\.(jpe?g|png|webp|gif)$/i.test(name);
+      })
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+    for (const mediaPath of mediaPaths) {
+      const mediaFile = zip.file(mediaPath);
+      if (!mediaFile) continue;
+
+      const data = await mediaFile.async('nodebuffer');
+      const ext = extname(mediaPath) || '.jpg';
+      ordered.push({ data, ext });
+    }
+
+    const drawingNames = Object.keys(zip.files).filter(
+      (name) => name.startsWith('xl/drawings/drawing') && name.endsWith('.xml') && !name.includes('_rels'),
+    );
+
+    for (const drawingPath of drawingNames) {
+      const relsPath = drawingPath.replace('/drawings/', '/drawings/_rels/').replace('.xml', '.xml.rels');
+      const drawingFile = zip.file(drawingPath);
+      const relsFile = zip.file(relsPath);
+      if (!drawingFile || !relsFile) continue;
+
+      const drawingXml = await drawingFile.async('string');
+      const relsXml = await relsFile.async('string');
+
+      const relMap = new Map<string, string>();
+      for (const match of relsXml.matchAll(/Id="(rId\d+)"[^>]*Target="([^"]+)"/g)) {
+        const [, relId, target] = match;
+        if (!target.toLowerCase().includes('hdphoto')) {
+          relMap.set(relId, target);
+        }
+      }
+
+      const anchorRegex = /<xdr:(?:oneCell|twoCell)Anchor[\s\S]*?<\/xdr:(?:oneCell|twoCell)Anchor>/g;
+      for (const anchorMatch of drawingXml.matchAll(anchorRegex)) {
+        const block = anchorMatch[0];
+        const rowMatch = block.match(/<xdr:row>(\d+)</);
+        const relIdMatch = block.match(/r:embed="(rId\d+)"/);
+        if (!rowMatch || !relIdMatch) continue;
+
+        const excelRow = Number(rowMatch[1]);
+        const mediaTarget = relMap.get(relIdMatch[1]);
+        if (!Number.isFinite(excelRow) || !mediaTarget) continue;
+
+        const mediaPath = mediaTarget.startsWith('../')
+          ? `xl/${mediaTarget.replace('../', '')}`
+          : mediaTarget.startsWith('xl/')
+            ? mediaTarget
+            : `xl/media/${mediaTarget.split('/').pop()}`;
+
+        const mediaFile = zip.file(mediaPath);
+        if (!mediaFile) continue;
+
+        const data = await mediaFile.async('nodebuffer');
+        const ext = extname(mediaPath) || '.jpg';
+        byRow.set(excelRow, { data, ext });
+      }
+    }
+
+    return { byRow, ordered };
+  }
+
+  private saveImportedPhoto(
+    image: { data: Buffer; ext: string },
+    trtNo: string,
+    rowIndex: number,
+  ): string {
+    if (!existsSync(this.catalogUploadDir)) {
+      mkdirSync(this.catalogUploadDir, { recursive: true });
+    }
+
+    const safeTrt = trtNo.replace(/[^a-zA-Z0-9_-]/g, '_') || 'item';
+    const filename = `catalog-import-${safeTrt}-row${rowIndex}${image.ext}`;
+    writeFileSync(join(this.catalogUploadDir, filename), image.data);
+    return this.getImageUrl(filename);
   }
 
   private deletePhotoFile(photoUrl?: string | null): void {
@@ -260,62 +475,95 @@ export class CatalogService {
       throw new BadRequestException('Excel fayl yuborilmadi');
     }
 
-    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const fileBuffer = this.getExcelBuffer(file);
+    const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
     const firstSheet = workbook.SheetNames[0];
     if (!firstSheet) {
       throw new BadRequestException('Excel varaqasi topilmadi');
     }
 
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[firstSheet], {
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[firstSheet], {
+      header: 1,
       defval: '',
       raw: false,
-    });
+    }) as unknown[][];
 
+    let excelImages = { byRow: new Map<number, { data: Buffer; ext: string }>(), ordered: [] as Array<{ data: Buffer; ext: string }> };
+    try {
+      excelImages = await this.extractExcelImages(fileBuffer);
+    } catch (error) {
+      console.error('Excel rasmlarini olishda xato:', error);
+    }
+
+    let columnMap: Record<string, number> | null = null;
     let created = 0;
     let skipped = 0;
+    let photosAttached = 0;
+    let dataRowOrder = 0;
     const errors: Array<{ row: number; reason: string }> = [];
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const rowNumber = i + 2;
+    for (let rowIndex = 0; rowIndex < matrix.length; rowIndex++) {
+      const row = matrix[rowIndex] || [];
+      const excelRowNumber = rowIndex + 1;
 
-      const trtNo = this.pickValue(row, ['TRT №', 'TRT No', 'TRT N', 'TRT']);
-      const englishName = this.pickValue(row, ['ENGLISH NAME', 'English Name']);
-      const russianName = this.pickValue(row, ['RUSSIAN NAME', 'Russian Name']);
-
-      if (!trtNo || !englishName || !russianName) {
-        skipped++;
-        errors.push({ row: rowNumber, reason: 'Majburiy ustunlar yoq (TRT/ENGLISH/RUSSIAN)' });
+      if (this.isHeaderRow(row)) {
+        columnMap = this.buildColumnMap(row);
         continue;
       }
 
-      const normalizedTrtNo = this.normalizeTrtNo(trtNo);
-      const duplicate = await this.catalogRepository
-        .createQueryBuilder('item')
-        .where('LOWER(item.trtNo) = LOWER(:trtNo)', { trtNo: normalizedTrtNo })
-        .getOne();
-
-      if (duplicate) {
-        skipped++;
-        errors.push({ row: rowNumber, reason: `Duplicate TRT No: ${normalizedTrtNo}` });
+      if (!columnMap || this.isEmptyRow(row)) {
         continue;
       }
 
-      const oemNo = this.parseArrayCell(this.pickValue(row, ['OEM №', 'OEM No', 'OEM']));
-      const carName = this.parseArrayCell(this.pickValue(row, ['CAR NAME', 'Car Name']));
-      const model = this.parseArrayCell(this.pickValue(row, ['MODEL', 'Model']));
-      const years = this.parseArrayCell(this.pickValue(row, ['YEARS', 'Years']));
-      const contents = this.pickValue(row, ['CONTENTS', 'Contents']);
-      const ctrNo = this.pickValue(row, ['CTR №', 'CTR No', 'CTR']);
-      const lemforderNo = this.pickValue(row, ['LEMFÖRDER №', 'LEMFORDER №', 'LEMFORDER No', 'LEMFORDER']);
-      const groupName = this.pickValue(row, ['Gruppa nomenklatur', 'GROUP NAME', 'Group Name']);
-      const photoRaw = this.pickValue(row, ['FOTO', 'PHOTO', 'Photo', 'photo']);
-      const startOfSales = this.pickValue(row, ['Start of sales', 'START OF SALES']);
-      const weightRaw = this.pickValue(row, ['WEIGHT PER PC (KG)', 'WEIGHTPER PC(KG)', 'WEIGHT PER PC KG']);
-      const weightPerPcKg = weightRaw ? Number(weightRaw.replace(',', '.')) : undefined;
+      const trtRaw = this.getRowCell(row, columnMap.trt);
+      const oemRaw = this.getRowCell(row, columnMap.oem ?? -1);
+      const englishName = this.getRowCell(row, columnMap.englishName);
+      const russianName = this.getRowCell(row, columnMap.russianName);
+
+      if (!trtRaw || !englishName || !russianName) {
+        skipped++;
+        errors.push({ row: excelRowNumber, reason: 'Majburiy ustunlar yoq (TRT/ENGLISH/RUSSIAN)' });
+        continue;
+      }
+
+      if (this.isHeaderLikeDataRow(trtRaw, englishName, russianName)) {
+        skipped++;
+        errors.push({ row: excelRowNumber, reason: "Sarlavha qatori (o'tkazib yuborildi)" });
+        continue;
+      }
+
+      const { trtNo, oemNo } = this.resolveTrtAndOem(trtRaw, oemRaw);
+      if (!trtNo) {
+        skipped++;
+        errors.push({ row: excelRowNumber, reason: 'TRT № bo\'sh' });
+        continue;
+      }
+
+      const carName = this.parseArrayCell(this.getRowCell(row, columnMap.carName ?? -1));
+      const model = this.parseArrayCell(this.getRowCell(row, columnMap.model ?? -1));
+      const years = this.parseArrayCell(this.getRowCell(row, columnMap.years ?? -1));
+      const contents = this.getRowCell(row, columnMap.contents ?? -1);
+      const ctrNo = this.getRowCell(row, columnMap.ctr ?? -1);
+      const lemforderNo = this.getRowCell(row, columnMap.lemforder ?? -1);
+      const groupName = this.getRowCell(row, columnMap.groupName ?? -1);
+      const photoRaw = this.getRowCell(row, columnMap.foto ?? -1);
+      const startOfSales = this.getRowCell(row, columnMap.startOfSales ?? -1);
+      const weightPerPcKg = this.getRowNumber(row, columnMap.weight ?? -1);
+
+      let photoUrl: string | undefined;
+      const embeddedImage =
+        excelImages.byRow.get(rowIndex) ?? excelImages.ordered[dataRowOrder];
+
+      if (embeddedImage) {
+        photoUrl = this.saveImportedPhoto(embeddedImage, trtNo, rowIndex);
+        photosAttached++;
+      } else if (photoRaw && !this.headerMatches(photoRaw, ['FOTO', 'PHOTO'])) {
+        photoUrl = this.normalizePhotoValue(photoRaw);
+        photosAttached++;
+      }
 
       const item = this.catalogRepository.create({
-        trtNo: normalizedTrtNo,
+        trtNo,
         oemNo,
         ctrNo: ctrNo || undefined,
         lemforderNo: lemforderNo || undefined,
@@ -325,25 +573,31 @@ export class CatalogService {
         carName,
         model,
         years,
-        photo: photoRaw ? this.normalizePhotoValue(photoRaw) : undefined,
+        photo: photoUrl,
         groupName: groupName || undefined,
         startOfSales: startOfSales || undefined,
-        weightPerPcKg: Number.isFinite(weightPerPcKg) ? weightPerPcKg : undefined,
+        weightPerPcKg,
       });
 
       try {
         await this.catalogRepository.save(item);
         created++;
-      } catch {
+        dataRowOrder++;
+      } catch (error: any) {
         skipped++;
-        errors.push({ row: rowNumber, reason: 'Saqlashda xatolik' });
+        errors.push({
+          row: excelRowNumber,
+          reason: error?.message || 'Saqlashda xatolik',
+        });
       }
     }
 
     return {
-      totalRows: rows.length,
+      totalRows: matrix.length,
       created,
       skipped,
+      photosAttached,
+      imagesFoundInExcel: excelImages.ordered.length,
       errors,
     };
   }

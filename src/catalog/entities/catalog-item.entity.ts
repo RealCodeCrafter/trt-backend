@@ -5,7 +5,7 @@ export class CatalogItem {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ unique: true })
+  @Column()
   trtNo: string;
 
   @Column('text', { array: true, nullable: true })
