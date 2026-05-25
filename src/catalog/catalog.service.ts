@@ -23,13 +23,31 @@ export class CatalogService {
     return `${baseUrl}/uploads/catalog/${filename}`;
   }
 
-  /** Bo'sh string maydonlar API da null emas, '' qaytadi */
+  /** Bo'sh string maydonlar null emas, '' (bo'sh string) */
   private asString(value?: string | null): string {
     if (value === null || value === undefined) return '';
     return String(value).trim();
   }
 
+  /** Bazaga saqlashdan oldin null -> '' va [] */
+  private normalizeCatalogItem(item: CatalogItem): CatalogItem {
+    item.oemNo = item.oemNo ?? [];
+    item.carName = item.carName ?? [];
+    item.model = item.model ?? [];
+    item.years = item.years ?? [];
+    item.ctrNo = this.asString(item.ctrNo);
+    item.lemforderNo = this.asString(item.lemforderNo);
+    item.englishName = this.asString(item.englishName);
+    item.contents = this.asString(item.contents);
+    item.russianName = this.asString(item.russianName);
+    item.photo = this.asString(item.photo);
+    item.startOfSales = this.asString(item.startOfSales);
+    item.groupName = this.asString(item.groupName);
+    return item;
+  }
+
   private toResponse(item: CatalogItem) {
+    this.normalizeCatalogItem(item);
     return {
       id: item.id,
       trtNo: item.trtNo,
@@ -49,8 +67,9 @@ export class CatalogService {
     };
   }
 
+  /** TRT code: faqat bo'sh emasligi muhim, format/case cheklanmaydi */
   private normalizeTrtNo(value: string): string {
-    return value.trim().toUpperCase();
+    return (value.split(/\r?\n/)[0] || '').trim();
   }
 
   private parseArrayCell(value: unknown): string[] {
@@ -137,11 +156,6 @@ export class CatalogService {
     );
   }
 
-  private isTrtCodeValue(value: string): boolean {
-    const first = value.split(/\r?\n/)[0]?.trim() || '';
-    return /^R[0-9A-Z]/i.test(first);
-  }
-
   private getRowCell(row: unknown[], index: number): string {
     if (index < 0 || index >= row.length) return '';
     const value = row[index];
@@ -165,8 +179,11 @@ export class CatalogService {
       const label = this.normalizeHeaderLabel(cell);
       if (!label) return;
 
-      if (label.includes('TRT') && !label.includes('OEM')) map.trt = index;
-      else if (label.includes('OEM') && !label.includes('TRT')) map.oem = index;
+      if (label.includes('TRT') && label.includes('OEM')) {
+        map.trt = index;
+        map.oem = index;
+      } else if (label.includes('TRT')) map.trt = index;
+      else if (label.includes('OEM')) map.oem = index;
       else if (this.headerMatches(label, ['CTR №', 'CTR NO', 'CTR'])) map.ctr = index;
       else if (this.headerMatches(label, ['LEMFÖRDER №', 'LEMFORDER №', 'LEMFORDER NO', 'LEMFORDER'])) {
         map.lemforder = index;
@@ -190,18 +207,8 @@ export class CatalogService {
   }
 
   private resolveTrtAndOem(trtRaw: string, oemRaw: string): { trtNo: string; oemNo: string[] } {
-    const trtIsCode = this.isTrtCodeValue(trtRaw);
-    const oemIsCode = this.isTrtCodeValue(oemRaw);
-
-    if (oemIsCode && !trtIsCode) {
-      return {
-        trtNo: (oemRaw.split(/\r?\n/)[0] || '').trim(),
-        oemNo: this.parseArrayCell(trtRaw),
-      };
-    }
-
     return {
-      trtNo: (trtRaw.split(/\r?\n/)[0] || '').trim(),
+      trtNo: this.normalizeTrtNo(trtRaw),
       oemNo: this.parseArrayCell(oemRaw),
     };
   }
@@ -349,7 +356,7 @@ export class CatalogService {
     });
 
     try {
-      const saved = await this.catalogRepository.save(item);
+      const saved = await this.catalogRepository.save(this.normalizeCatalogItem(item));
       return this.toResponse(saved);
     } catch (error: any) {
       // PostgreSQL unique violation
@@ -404,7 +411,7 @@ export class CatalogService {
       item.photo = this.getImageUrl(photo.filename);
     }
 
-    const updated = await this.catalogRepository.save(item);
+    const updated = await this.catalogRepository.save(this.normalizeCatalogItem(item));
     return this.toResponse(updated);
   }
 
@@ -465,78 +472,31 @@ export class CatalogService {
     return items.map((item) => this.toResponse(item));
   }
 
-  private classifyImportSkipReason(
-    rawReason: string,
-    trtNo?: string,
-  ): { category: string; reason: string } {
-    const lower = rawReason.toLowerCase();
-
-    if (lower.includes('duplicate') || lower.includes('unique') || lower.includes('23505')) {
-      return {
-        category: 'duplicate',
-        reason: trtNo
-          ? `Qator ${trtNo}: dublikat — bu TRT code bazada allaqachon bor (takroriy yuklash)`
-          : 'Dublikat — TRT code bazada allaqachon mavjud',
-      };
-    }
-    if (lower.includes('trt') && (lower.includes('bo\'sh') || lower.includes('bosh'))) {
-      return { category: 'empty_trt', reason: 'TRT № bo\'sh yoki noto\'g\'ri' };
-    }
-    if (lower.includes('butunlay bo\'sh')) {
-      return { category: 'empty_row', reason: 'Butunlay bo\'sh qator' };
-    }
-    if (lower.includes('sarlavha')) {
-      return { category: 'header_row', reason: "Sarlavha qatori (o'tkazib yuborildi)" };
-    }
-    if (lower.includes('ustun') || lower.includes('header')) {
-      return { category: 'no_header', reason: 'TRT ustuni topilmadi (sarlavha qatori yo\'q)' };
-    }
-
-    return { category: 'other', reason: rawReason };
-  }
-
   private buildImportReportMessage(stats: {
     totalExcelRows: number;
-    dataRowsFound: number;
     created: number;
-    skipped: number;
-    headerRows: number;
-    emptyRows: number;
-    skippedWithoutHeader: number;
-    byCategory: Record<string, number>;
+    notImported: number;
+    emptyTrt: number;
+    duplicate: number;
+    saveError: number;
   }): string {
-    const parts = [
-      `Excelda jami ${stats.totalExcelRows} qator.`,
-      `Sarlavha: ${stats.headerRows} ta.`,
-      `Ma'lumot qatorlari: ${stats.dataRowsFound} ta (bo'sh ${stats.emptyRows} ta o'tkazildi).`,
-      `Yuklandi: ${stats.created} ta.`,
-      `O'tkazildi: ${stats.skipped} ta.`,
-    ];
+    let text = `Excelda ${stats.totalExcelRows} ta qator bor edi. ${stats.created} tasi yuklandi.`;
 
-    if (stats.skippedWithoutHeader > 0) {
-      parts.push(`Sarlavha topilmaguncha ${stats.skippedWithoutHeader} qator o'qilmadi.`);
+    if (stats.notImported > 0) {
+      text += ` ${stats.notImported} tasi yuklanmadi`;
+      const reasons: string[] = [];
+      if (stats.emptyTrt > 0) reasons.push(`TRT bo'sh: ${stats.emptyTrt}`);
+      if (stats.duplicate > 0) {
+        reasons.push(`dublikat (TRT bazada bor): ${stats.duplicate}`);
+      }
+      if (stats.saveError > 0) reasons.push(`boshqa xato: ${stats.saveError}`);
+      if (reasons.length) text += ` (${reasons.join(', ')})`;
+      text += '.';
+    } else {
+      text += '.';
     }
 
-    const labels: Record<string, string> = {
-      duplicate: 'dublikat',
-      empty_trt: 'TRT bo\'sh',
-      header_row: 'sarlavha qatori',
-      empty_row: 'butunlay bo\'sh qator',
-      no_header: 'sarlavha yo\'q',
-      save_error: 'saqlash xatosi',
-      other: 'boshqa',
-    };
-
-    const detail = Object.entries(stats.byCategory)
-      .filter(([, count]) => count > 0)
-      .map(([key, count]) => `${labels[key] || key}: ${count}`)
-      .join(', ');
-
-    if (detail) {
-      parts.push(`Sabablari: ${detail}.`);
-    }
-
-    return parts.join(' ');
+    return text;
   }
 
   async importFromExcel(file: Express.Multer.File) {
@@ -566,30 +526,18 @@ export class CatalogService {
 
     let columnMap: Record<string, number> | null = null;
     let created = 0;
-    let skipped = 0;
+    let notImported = 0;
+    let emptyTrt = 0;
+    let duplicate = 0;
+    let saveError = 0;
     let photosAttached = 0;
     let dataRowOrder = 0;
-    let headerRows = 0;
-    let dataRowsFound = 0;
-    let emptyRows = 0;
-    let skippedWithoutHeader = 0;
 
-    const skippedRows: Array<{
-      row: number;
-      trtNo?: string;
-      reason: string;
-      category: string;
-    }> = [];
-    const createdRows: Array<{ row: number; trtNo: string }> = [];
-    const byCategory: Record<string, number> = {};
-
-    const pushSkip = (row: number, rawReason: string, trtNo?: string) => {
-      skipped++;
-      const { category, reason } = this.classifyImportSkipReason(rawReason, trtNo);
-      byCategory[category] = (byCategory[category] || 0) + 1;
-      if (skippedRows.length < 500) {
-        skippedRows.push({ row, trtNo, reason, category });
-      }
+    const noteSkip = (category: 'empty_trt' | 'duplicate' | 'save_error') => {
+      notImported++;
+      if (category === 'empty_trt') emptyTrt++;
+      if (category === 'duplicate') duplicate++;
+      if (category === 'save_error') saveError++;
     };
 
     for (let rowIndex = 0; rowIndex < matrix.length; rowIndex++) {
@@ -597,47 +545,32 @@ export class CatalogService {
       const excelRowNumber = rowIndex + 1;
 
       if (this.isHeaderRow(row)) {
-        columnMap = this.buildColumnMap(row);
-        if (columnMap) {
-          headerRows++;
-        }
+        const map = this.buildColumnMap(row);
+        if (map) columnMap = map;
         continue;
       }
 
-      if (!columnMap) {
-        if (!this.isEmptyRow(row)) {
-          skippedWithoutHeader++;
-          pushSkip(excelRowNumber, 'TRT ustuni topilmadi (avval sarlavha qatori kerak)');
-        }
+      if (!columnMap || this.isEmptyRow(row)) {
         continue;
       }
-
-      if (this.isEmptyRow(row)) {
-        emptyRows++;
-        pushSkip(excelRowNumber, 'Butunlay bo\'sh qator');
-        continue;
-      }
-
-      dataRowsFound++;
 
       const trtRaw = this.getRowCell(row, columnMap.trt);
       const oemRaw = this.getRowCell(row, columnMap.oem ?? -1);
       const englishName = this.getRowCell(row, columnMap.englishName ?? -1);
       const russianName = this.getRowCell(row, columnMap.russianName ?? -1);
 
-      if (!trtRaw) {
-        pushSkip(excelRowNumber, 'TRT № bo\'sh');
+      if (this.isHeaderLikeDataRow(trtRaw, englishName, russianName)) {
         continue;
       }
 
-      if (this.isHeaderLikeDataRow(trtRaw, englishName, russianName)) {
-        pushSkip(excelRowNumber, "Sarlavha qatori (o'tkazib yuborildi)");
+      if (!trtRaw.trim()) {
+        noteSkip('empty_trt');
         continue;
       }
 
       const { trtNo, oemNo } = this.resolveTrtAndOem(trtRaw, oemRaw);
       if (!trtNo) {
-        pushSkip(excelRowNumber, 'TRT № bo\'sh yoki noto\'g\'ri');
+        noteSkip('empty_trt');
         continue;
       }
 
@@ -675,77 +608,52 @@ export class CatalogService {
         carName,
         model,
         years,
-        photo: photoUrl || '',
+        photo: this.asString(photoUrl),
         groupName: this.asString(groupName),
         startOfSales: this.asString(startOfSales),
         weightPerPcKg,
       });
 
       try {
-        await this.catalogRepository.save(item);
+        await this.catalogRepository.save(this.normalizeCatalogItem(item));
         created++;
         dataRowOrder++;
-        if (createdRows.length < 500) {
-          createdRows.push({ row: excelRowNumber, trtNo });
-        }
       } catch (error: any) {
-        const rawMessage = error?.message || 'Saqlashda xatolik';
-        const category =
-          error?.code === '23505' ? 'duplicate' : 'save_error';
-        byCategory[category] = (byCategory[category] || 0) + 1;
-        skipped++;
-        if (skippedRows.length < 500) {
-          const { reason } = this.classifyImportSkipReason(rawMessage, trtNo);
-          skippedRows.push({
-            row: excelRowNumber,
-            trtNo,
-            reason,
-            category,
-          });
+        if (error?.code === '23505') {
+          noteSkip('duplicate');
+        } else {
+          noteSkip('save_error');
         }
       }
     }
 
     if (!columnMap) {
-      byCategory.no_header = (byCategory.no_header || 0) + 1;
+      throw new BadRequestException(
+        'Excelda TRT ustuni topilmadi. Sarlavha qatorida TRT yozuvi bo\'lishi kerak.',
+      );
     }
 
-    const notImported = skipped;
     const message = this.buildImportReportMessage({
       totalExcelRows: matrix.length,
-      dataRowsFound,
       created,
-      skipped,
-      headerRows,
-      emptyRows,
-      skippedWithoutHeader,
-      byCategory,
+      notImported,
+      emptyTrt,
+      duplicate,
+      saveError,
     });
 
     return {
-      success: created > 0 || skipped === 0,
+      success: true,
       message,
-      fileName: file.originalname || null,
-      sheetName: firstSheet,
       totalExcelRows: matrix.length,
-      headerRowsFound: headerRows,
-      dataRowsFound,
-      emptyRowsSkipped: emptyRows,
-      rowsBeforeHeaderFound: skippedWithoutHeader,
       created,
-      skipped,
+      skipped: notImported,
       notImported,
+      emptyTrt,
+      duplicate,
+      saveError,
       photosAttached,
       imagesFoundInExcel: excelImages.ordered.length,
-      skippedByCategory: byCategory,
-      createdRows,
-      skippedRows,
-      errors: skippedRows.map(({ row, trtNo, reason, category }) => ({
-        row,
-        trtNo: trtNo || '',
-        reason,
-        category,
-      })),
     };
   }
 }

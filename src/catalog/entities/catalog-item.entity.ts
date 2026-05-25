@@ -8,42 +8,42 @@ export class CatalogItem {
   @Column()
   trtNo: string;
 
-  @Column('text', { array: true, nullable: true })
-  oemNo?: string[];
+  @Column('text', { array: true })
+  oemNo: string[];
 
-  @Column({ nullable: true })
-  ctrNo?: string;
+  @Column({ default: '' })
+  ctrNo: string;
 
-  @Column({ nullable: true })
-  lemforderNo?: string;
+  @Column({ default: '' })
+  lemforderNo: string;
 
   @Column({ default: '' })
   englishName: string;
 
-  @Column({ type: 'text', nullable: true })
-  contents?: string;
+  @Column({ type: 'text', default: '' })
+  contents: string;
 
   @Column({ default: '' })
   russianName: string;
 
-  @Column('text', { array: true, nullable: true })
-  carName?: string[];
+  @Column('text', { array: true })
+  carName: string[];
 
-  @Column('text', { array: true, nullable: true })
-  model?: string[];
+  @Column('text', { array: true })
+  model: string[];
 
-  @Column('text', { array: true, nullable: true })
-  years?: string[];
+  @Column('text', { array: true })
+  years: string[];
 
-  @Column('text', { nullable: true })
-  photo?: string;
+  @Column({ default: '' })
+  photo: string;
 
   @Column({ type: 'float', nullable: true })
-  weightPerPcKg?: number;
+  weightPerPcKg?: number | null;
 
-  @Column({ type: 'date', nullable: true })
-  startOfSales?: string;
+  @Column({ type: 'varchar', length: 32, default: '' })
+  startOfSales: string;
 
-  @Column({ nullable: true })
-  groupName?: string;
+  @Column({ default: '' })
+  groupName: string;
 }
