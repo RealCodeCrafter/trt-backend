@@ -23,23 +23,29 @@ export class CatalogService {
     return `${baseUrl}/uploads/catalog/${filename}`;
   }
 
+  /** Bo'sh string maydonlar API da null emas, '' qaytadi */
+  private asString(value?: string | null): string {
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
+  }
+
   private toResponse(item: CatalogItem) {
     return {
       id: item.id,
       trtNo: item.trtNo,
       oemNo: item.oemNo || [],
-      ctrNo: item.ctrNo || null,
-      lemforderNo: item.lemforderNo || null,
-      englishName: item.englishName || '',
-      contents: item.contents || null,
-      russianName: item.russianName || '',
+      ctrNo: this.asString(item.ctrNo),
+      lemforderNo: this.asString(item.lemforderNo),
+      englishName: this.asString(item.englishName),
+      contents: this.asString(item.contents),
+      russianName: this.asString(item.russianName),
       carName: item.carName || [],
       model: item.model || [],
       years: item.years || [],
-      photo: item.photo || null,
+      photo: this.asString(item.photo),
       weightPerPcKg: item.weightPerPcKg ?? null,
-      startOfSales: item.startOfSales || null,
-      groupName: item.groupName || null,
+      startOfSales: this.asString(item.startOfSales),
+      groupName: this.asString(item.groupName),
     };
   }
 
@@ -328,18 +334,18 @@ export class CatalogService {
     const item = this.catalogRepository.create({
       trtNo: normalizedTrtNo,
       oemNo: dto.oemNo || [],
-      ctrNo: dto.ctrNo?.trim() || undefined,
-      lemforderNo: dto.lemforderNo?.trim() || undefined,
-      englishName: dto.englishName?.trim() || '',
-      contents: dto.contents?.trim() || undefined,
-      russianName: dto.russianName?.trim() || '',
+      ctrNo: this.asString(dto.ctrNo),
+      lemforderNo: this.asString(dto.lemforderNo),
+      englishName: this.asString(dto.englishName),
+      contents: this.asString(dto.contents),
+      russianName: this.asString(dto.russianName),
       carName: dto.carName || [],
       model: dto.model || [],
       years: dto.years || [],
-      photo: photo ? this.getImageUrl(photo.filename) : undefined,
+      photo: photo ? this.getImageUrl(photo.filename) : '',
       weightPerPcKg: dto.weightPerPcKg,
-      startOfSales: dto.startOfSales?.trim() || undefined,
-      groupName: dto.groupName?.trim() || undefined,
+      startOfSales: this.asString(dto.startOfSales),
+      groupName: this.asString(dto.groupName),
     });
 
     try {
@@ -382,17 +388,17 @@ export class CatalogService {
     }
 
     if (dto.oemNo) item.oemNo = dto.oemNo;
-    if (dto.ctrNo !== undefined) item.ctrNo = dto.ctrNo;
-    if (dto.lemforderNo !== undefined) item.lemforderNo = dto.lemforderNo;
-    if (dto.englishName !== undefined) item.englishName = dto.englishName;
-    if (dto.contents !== undefined) item.contents = dto.contents;
-    if (dto.russianName !== undefined) item.russianName = dto.russianName;
+    if (dto.ctrNo !== undefined) item.ctrNo = this.asString(dto.ctrNo);
+    if (dto.lemforderNo !== undefined) item.lemforderNo = this.asString(dto.lemforderNo);
+    if (dto.englishName !== undefined) item.englishName = this.asString(dto.englishName);
+    if (dto.contents !== undefined) item.contents = this.asString(dto.contents);
+    if (dto.russianName !== undefined) item.russianName = this.asString(dto.russianName);
     if (dto.carName) item.carName = dto.carName;
     if (dto.model) item.model = dto.model;
     if (dto.years) item.years = dto.years;
     if (dto.weightPerPcKg !== undefined) item.weightPerPcKg = dto.weightPerPcKg;
-    if (dto.startOfSales !== undefined) item.startOfSales = dto.startOfSales;
-    if (dto.groupName !== undefined) item.groupName = dto.groupName;
+    if (dto.startOfSales !== undefined) item.startOfSales = this.asString(dto.startOfSales);
+    if (dto.groupName !== undefined) item.groupName = this.asString(dto.groupName);
     if (photo) {
       this.deletePhotoFile(item.photo);
       item.photo = this.getImageUrl(photo.filename);
@@ -468,7 +474,9 @@ export class CatalogService {
     if (lower.includes('duplicate') || lower.includes('unique') || lower.includes('23505')) {
       return {
         category: 'duplicate',
-        reason: trtNo ? `TRT ${trtNo} — dublikat (bazada bor)` : 'Dublikat (bazada bor)',
+        reason: trtNo
+          ? `Qator ${trtNo}: dublikat — bu TRT code bazada allaqachon bor (takroriy yuklash)`
+          : 'Dublikat — TRT code bazada allaqachon mavjud',
       };
     }
     if (lower.includes('trt') && (lower.includes('bo\'sh') || lower.includes('bosh'))) {
@@ -659,17 +667,17 @@ export class CatalogService {
       const item = this.catalogRepository.create({
         trtNo,
         oemNo,
-        ctrNo: ctrNo || undefined,
-        lemforderNo: lemforderNo || undefined,
-        englishName: englishName || '',
-        contents: contents || undefined,
-        russianName: russianName || '',
+        ctrNo: this.asString(ctrNo),
+        lemforderNo: this.asString(lemforderNo),
+        englishName: this.asString(englishName),
+        contents: this.asString(contents),
+        russianName: this.asString(russianName),
         carName,
         model,
         years,
-        photo: photoUrl,
-        groupName: groupName || undefined,
-        startOfSales: startOfSales || undefined,
+        photo: photoUrl || '',
+        groupName: this.asString(groupName),
+        startOfSales: this.asString(startOfSales),
         weightPerPcKg,
       });
 
@@ -732,10 +740,11 @@ export class CatalogService {
       skippedByCategory: byCategory,
       createdRows,
       skippedRows,
-      errors: skippedRows.map(({ row, trtNo, reason }) => ({
+      errors: skippedRows.map(({ row, trtNo, reason, category }) => ({
         row,
-        trtNo: trtNo || null,
+        trtNo: trtNo || '',
         reason,
+        category,
       })),
     };
   }
