@@ -23,10 +23,11 @@ export class CatalogService {
     return `${baseUrl}/uploads/catalog/${filename}`;
   }
 
-  /** Bo'sh string maydonlar null emas, '' (bo'sh string) */
+  /** Bo'sh string maydonlar null emas, '' (bo'sh string). "-" va "0" saqlanadi */
   private asString(value?: string | null): string {
     if (value === null || value === undefined) return '';
-    return String(value).trim();
+    const text = String(value).trim();
+    return text;
   }
 
   /** Bazaga saqlashdan oldin null -> '' va [] */
@@ -121,6 +122,10 @@ export class CatalogService {
 
   private normalizeHeaderLabel(value: unknown): string {
     return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/Ö/g, 'O')
+      .replace(/ö/g, 'o')
       .replace(/\r?\n/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -160,6 +165,10 @@ export class CatalogService {
     if (index < 0 || index >= row.length) return '';
     const value = row[index];
     if (value === null || value === undefined) return '';
+    if (typeof value === 'number') {
+      if (Number.isFinite(value)) return String(value);
+      return '';
+    }
     return String(value).trim();
   }
 
@@ -185,7 +194,10 @@ export class CatalogService {
       } else if (label.includes('TRT')) map.trt = index;
       else if (label.includes('OEM')) map.oem = index;
       else if (this.headerMatches(label, ['CTR №', 'CTR NO', 'CTR'])) map.ctr = index;
-      else if (this.headerMatches(label, ['LEMFÖRDER №', 'LEMFORDER №', 'LEMFORDER NO', 'LEMFORDER'])) {
+      else if (
+        label.includes('LEMF') &&
+        (label.includes('RDER') || label.includes('FORDER') || label.includes('LEMFORDER'))
+      ) {
         map.lemforder = index;
       } else if (this.headerMatches(label, ['ENGLISH NAME'])) map.englishName = index;
       else if (this.headerMatches(label, ['CONTENTS'])) map.contents = index;
