@@ -66,16 +66,16 @@ export class CreateCatalogItemDto {
   lemforderNo?: string;
 
   @IsString()
-  @IsNotEmpty()
-  englishName: string;
+  @IsOptional()
+  englishName?: string;
 
   @IsString()
   @IsOptional()
   contents?: string;
 
   @IsString()
-  @IsNotEmpty()
-  russianName: string;
+  @IsOptional()
+  russianName?: string;
 
   @Transform(({ value }) => parseStringArray(value))
   @IsArray()

@@ -17,13 +17,13 @@ export class CatalogItem {
   @Column({ nullable: true })
   lemforderNo?: string;
 
-  @Column()
+  @Column({ default: '' })
   englishName: string;
 
   @Column({ type: 'text', nullable: true })
   contents?: string;
 
-  @Column()
+  @Column({ default: '' })
   russianName: string;
 
   @Column('text', { array: true, nullable: true })

@@ -114,8 +114,7 @@ export class CatalogService {
     const labels = row.map((cell) => this.normalizeHeaderLabel(cell));
     const hasTrt = labels.some((l) => l.includes('TRT'));
     const hasOem = labels.some((l) => l.includes('OEM'));
-    const hasEnglish = labels.some((l) => l.includes('ENGLISH NAME'));
-    return hasTrt && hasOem && hasEnglish;
+    return hasTrt && hasOem;
   }
 
   private isEmptyRow(row: unknown[]): boolean {
@@ -179,7 +178,7 @@ export class CatalogService {
       else if (this.headerMatches(label, ['GRUPPA NOMENKLATUR', 'GROUP NAME'])) map.groupName = index;
     });
 
-    if (map.trt === undefined || map.englishName === undefined || map.russianName === undefined) {
+    if (map.trt === undefined) {
       return null;
     }
 
@@ -341,9 +340,9 @@ export class CatalogService {
       oemNo: dto.oemNo || [],
       ctrNo: dto.ctrNo,
       lemforderNo: dto.lemforderNo,
-      englishName: dto.englishName,
+      englishName: dto.englishName?.trim() || '',
       contents: dto.contents,
-      russianName: dto.russianName,
+      russianName: dto.russianName?.trim() || '',
       carName: dto.carName || [],
       model: dto.model || [],
       years: dto.years || [],
@@ -517,12 +516,12 @@ export class CatalogService {
 
       const trtRaw = this.getRowCell(row, columnMap.trt);
       const oemRaw = this.getRowCell(row, columnMap.oem ?? -1);
-      const englishName = this.getRowCell(row, columnMap.englishName);
-      const russianName = this.getRowCell(row, columnMap.russianName);
+      const englishName = this.getRowCell(row, columnMap.englishName ?? -1);
+      const russianName = this.getRowCell(row, columnMap.russianName ?? -1);
 
-      if (!trtRaw || !englishName || !russianName) {
+      if (!trtRaw) {
         skipped++;
-        errors.push({ row: excelRowNumber, reason: 'Majburiy ustunlar yoq (TRT/ENGLISH/RUSSIAN)' });
+        errors.push({ row: excelRowNumber, reason: 'TRT № bo\'sh' });
         continue;
       }
 
@@ -567,9 +566,9 @@ export class CatalogService {
         oemNo,
         ctrNo: ctrNo || undefined,
         lemforderNo: lemforderNo || undefined,
-        englishName,
+        englishName: englishName || '',
         contents: contents || undefined,
-        russianName,
+        russianName: russianName || '',
         carName,
         model,
         years,

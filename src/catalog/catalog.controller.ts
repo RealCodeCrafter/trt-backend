@@ -29,7 +29,7 @@ export class CatalogController {
   @ApiBody({
     schema: {
       type: 'object',
-      required: ['trtNo', 'englishName', 'russianName'],
+      required: ['trtNo'],
       properties: {
         trtNo: { type: 'string', example: 'R8000' },
         oemNo: { type: 'string', example: '["94788122","94786917"]' },
