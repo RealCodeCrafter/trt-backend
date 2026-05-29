@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, Brackets } from 'typeorm';
 import { Part } from './entities/part.entity';
 import { CreatePartDto } from './dto/create-part.dto';
 import { UpdatePartDto } from './dto/update-part.dto';
@@ -393,22 +393,51 @@ export class PartsService {
   }
 
   async searchByName(name: string) {
-    // Himoya: name kelmasa /products list sifatida ishlasin
     if (!name || !name.trim()) {
       return await this.findAll();
     }
 
+    const term = `%${this.normalizeParam(name).toLowerCase()}%`;
+
     const parts = await this.partsRepository
       .createQueryBuilder('part')
       .leftJoinAndSelect('part.categories', 'category')
-      .where('LOWER(part.translations->\'en\'->>\'name\') LIKE :name OR LOWER(part.translations->\'ru\'->>\'name\') LIKE :name', {
-        name: `%${name.toLowerCase()}%`,
-      })
+      .distinct(true)
+      .where(
+        new Brackets((qb) => {
+          qb.where("LOWER(part.translations->'en'->>'name') LIKE :term")
+            .orWhere("LOWER(part.translations->'ru'->>'name') LIKE :term")
+            .orWhere('LOWER(part.sku) LIKE :term')
+            .orWhere('LOWER(part.trtCode) LIKE :term')
+            .orWhere('LOWER(part.brand) LIKE :term')
+            .orWhere("LOWER(COALESCE(part.imageUrl, '')) LIKE :term")
+            .orWhere(
+              "EXISTS (SELECT 1 FROM unnest(COALESCE(part.carName, ARRAY[]::text[])) AS v WHERE LOWER(v) LIKE :term)",
+            )
+            .orWhere(
+              "EXISTS (SELECT 1 FROM unnest(COALESCE(part.model, ARRAY[]::text[])) AS v WHERE LOWER(v) LIKE :term)",
+            )
+            .orWhere(
+              "EXISTS (SELECT 1 FROM unnest(COALESCE(part.oem, ARRAY[]::text[])) AS v WHERE LOWER(v) LIKE :term)",
+            )
+            .orWhere(
+              "EXISTS (SELECT 1 FROM unnest(COALESCE(part.years, ARRAY[]::text[])) AS v WHERE LOWER(v) LIKE :term)",
+            )
+            .orWhere(
+              "EXISTS (SELECT 1 FROM unnest(COALESCE(part.images, ARRAY[]::text[])) AS v WHERE LOWER(v) LIKE :term)",
+            )
+            .orWhere("LOWER(category.translations->'en'->>'name') LIKE :term")
+            .orWhere("LOWER(category.translations->'ru'->>'name') LIKE :term")
+            .orWhere("LOWER(category.translations->'en'->>'description') LIKE :term")
+            .orWhere("LOWER(category.translations->'ru'->>'description') LIKE :term");
+        }),
+      )
+      .setParameter('term', term)
       .orderBy('part.id', 'ASC')
       .getMany();
 
     if (parts.length === 0) {
-      throw new NotFoundException(`Nomi ${name} bilan qism topilmadi`);
+      throw new NotFoundException(`"${name}" bo'yicha mahsulot topilmadi`);
     }
 
     return parts.map(part => ({
