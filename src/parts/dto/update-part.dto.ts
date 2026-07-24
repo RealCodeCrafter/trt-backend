@@ -22,6 +22,20 @@ export class UpdatePartDto {
     ru: { name?: string };
   };
 
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return [value];
+      }
+    }
+    return Array.isArray(value) ? value : value ? [value] : undefined;
+  })
   @IsArray()
   @IsOptional()
   images?: string[];
