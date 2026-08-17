@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Body, Param, Query, Delete, Put, UseInterceptors, UploadedFiles, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Delete, Put, Patch, UseInterceptors, UploadedFiles, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PartsService } from './parts.service';
 import { CreatePartDto } from './dto/create-part.dto';
 import { UpdatePartDto } from './dto/update-part.dto';
+import { ReorderProductImagesDto } from './dto/reorder-product-images.dto';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
@@ -134,6 +135,36 @@ export class PartsController {
     @UploadedFiles() files?: Express.Multer.File[],
   ) {
     return await this.partsService.update(+id, updatePartDto, files);
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('superAdmin', 'admin')
+  @Patch(':id/images/reorder')
+  @ApiBearerAuth('bearer')
+  @ApiParam({ name: 'id', required: true, type: Number })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['imageUrl', 'position'],
+      properties: {
+        imageUrl: {
+          type: 'string',
+          example: 'https://backend.winnerlub.uz/uploads/parts/part-xxx.jpg',
+          description: 'Mahsulotdagi mavjud rasm URL',
+        },
+        position: {
+          type: 'number',
+          example: 4,
+          description: '1-based o‘rin (1 = birinchi, oxirgi raqam = oxirida)',
+        },
+      },
+    },
+  })
+  async reorderImages(
+    @Param('id') id: string,
+    @Body() dto: ReorderProductImagesDto,
+  ) {
+    return await this.partsService.reorderImages(+id, dto.imageUrl, dto.position);
   }
 
   @UseGuards(AuthGuard, RolesGuard)

@@ -33,6 +33,31 @@ export class PartsService {
     return `${baseUrl}/uploads/parts/${filename}`;
   }
 
+  private normalizeImageKey(url: string): string {
+    const trimmed = (url || '').trim();
+    try {
+      const parsed = new URL(trimmed);
+      return decodeURIComponent(parsed.pathname.replace(/\/+$/, '')).toLowerCase();
+    } catch {
+      return decodeURIComponent(trimmed.split('?')[0].replace(/\/+$/, '')).toLowerCase();
+    }
+  }
+
+  private findImageIndex(images: string[], imageUrl: string): number {
+    const requested = (imageUrl || '').trim();
+    if (!requested) return -1;
+
+    const exact = images.findIndex((img) => (img || '').trim() === requested);
+    if (exact !== -1) return exact;
+
+    const requestedKey = this.normalizeImageKey(requested);
+    const requestedFile = requestedKey.split('/').pop();
+    return images.findIndex((img) => {
+      const imgKey = this.normalizeImageKey(img);
+      return imgKey === requestedKey || (!!requestedFile && imgKey.split('/').pop() === requestedFile);
+    });
+  }
+
   private deleteImageFile(imageUrl: string): void {
     if (!imageUrl) return;
     
@@ -216,6 +241,63 @@ export class PartsService {
     }
 
     const updatedPart = await this.partsRepository.save(part);
+    return {
+      id: updatedPart.id,
+      sku: updatedPart.sku,
+      translations: updatedPart.translations,
+      images: updatedPart.images,
+      carName: updatedPart.carName,
+      model: updatedPart.model,
+      oem: updatedPart.oem,
+      years: updatedPart.years,
+      trtCode: updatedPart.trtCode,
+      brand: updatedPart.brand,
+      categories: [...(updatedPart.categories || [])].sort((a, b) => a.id - b.id).map(category => ({
+        id: category.id,
+        translations: category.translations,
+        images: category.images,
+      })),
+    };
+  }
+
+  async reorderImages(id: number, imageUrl: string, position: number) {
+    const part = await this.partsRepository.findOne({
+      where: { id },
+      relations: ['categories'],
+    });
+
+    if (!part) {
+      throw new NotFoundException(`ID ${id} bilan qism topilmadi`);
+    }
+
+    const images = Array.isArray(part.images) ? [...part.images] : [];
+    if (images.length === 0) {
+      throw new BadRequestException('Bu mahsulotda rasmlar yo‘q');
+    }
+
+    const currentIndex = this.findImageIndex(images, imageUrl);
+    if (currentIndex === -1) {
+      throw new NotFoundException('Bu mahsulotda bunday rasm URL topilmadi');
+    }
+
+    const [moved] = images.splice(currentIndex, 1);
+    const targetIndex = Math.min(Math.max(position, 1), images.length + 1) - 1;
+    images.splice(targetIndex, 0, moved);
+
+    await this.partsRepository
+      .createQueryBuilder()
+      .update(Part)
+      .set({ images })
+      .where('id = :id', { id })
+      .execute();
+
+    const updatedPart = await this.partsRepository.findOne({
+      where: { id },
+      relations: ['categories'],
+    });
+    if (!updatedPart) {
+      throw new NotFoundException(`ID ${id} bilan qism topilmadi`);
+    }
     return {
       id: updatedPart.id,
       sku: updatedPart.sku,
