@@ -23,7 +23,11 @@
     "migrate-image-urls:apply": "node scripts/migrate-image-urls.js --apply",
     "analyze-part-images": "node scripts/analyze-part-images.js",
     "restore-part-images": "node scripts/restore-part-images.js",
-    "restore-part-images:apply": "node scripts/restore-part-images.js --apply"
+    "restore-part-images:apply": "node scripts/restore-part-images.js --apply",
+    "revert-part-images": "node scripts/revert-part-images.js",
+    "revert-part-images:apply": "node scripts/revert-part-images.js --apply",
+    "set-placeholder-image": "node scripts/set-placeholder-image.js",
+    "set-placeholder-image:apply": "node scripts/set-placeholder-image.js --apply"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
