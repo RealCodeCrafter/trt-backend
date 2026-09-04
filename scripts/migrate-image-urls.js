@@ -196,11 +196,23 @@ function pickColumn(columns, tableName, candidates) {
   return candidates.find((name) => set.has(name)) || null;
 }
 
-function getPkColumn(columns, tableName) {
-  const names = columns
-    .filter((col) => col.table_name === tableName)
-    .map((col) => col.column_name);
-  return names.includes('id') ? 'id' : names[0];
+async function getPrimaryKeys(client) {
+  const { rows } = await client.query(`
+    SELECT c.relname AS table_name, a.attname AS column_name
+    FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY (i.indkey)
+    WHERE i.indisprimary
+      AND n.nspname = 'public'
+      AND array_length(i.indkey::int[], 1) = 1
+  `);
+
+  const map = new Map();
+  for (const row of rows) {
+    map.set(row.table_name, row.column_name);
+  }
+  return map;
 }
 
 function columnMeta(columns, tableName, columnName) {
@@ -334,6 +346,7 @@ async function main() {
 
   try {
     const columns = await getPublicColumns(client);
+    const primaryKeys = await getPrimaryKeys(client);
     const tables = [...new Set(columns.map((col) => col.table_name))];
 
     const categoryTable = pickTable(tables, ['category', 'categories']);
@@ -394,7 +407,12 @@ async function main() {
       const results = [];
       for (const target of allTargets) {
         const meta = columnMeta(columns, target.table, target.column);
-        const pkColumn = getPkColumn(columns, target.table);
+        const pkColumn = primaryKeys.get(target.table);
+        if (!pkColumn) {
+          throw new Error(
+            `${target.table} jadvalida bitta ustunli primary key yo'q, yangilash xavfli`,
+          );
+        }
         const result = await migrateColumn(client, {
           tableName: target.table,
           columnName: target.column,
