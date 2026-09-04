@@ -18,7 +18,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "clear-catalog": "node scripts/clear-catalog.js --confirm"
+    "clear-catalog": "node scripts/clear-catalog.js --confirm",
+    "migrate-image-urls": "node scripts/migrate-image-urls.js",
+    "migrate-image-urls:apply": "node scripts/migrate-image-urls.js --apply"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
