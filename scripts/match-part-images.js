@@ -27,6 +27,7 @@ const PARTS_DIR = path.join(ROOT, 'uploads', 'parts');
 const CATALOG_DIR = path.join(ROOT, 'uploads', 'catalog');
 const OUT_DIR = path.join(ROOT, 'backup');
 const DEFAULT_GAP_MS = 5000;
+const RETRY_WINDOW_MS = 15 * 60 * 1000;
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -113,21 +114,25 @@ function groupSignature(group) {
     .join(':');
 }
 
-function findDuplicateGroups(groups) {
-  const bySignature = new Map();
-  for (let index = 0; index < groups.length; index += 1) {
-    const signature = groupSignature(groups[index]);
-    if (!bySignature.has(signature)) bySignature.set(signature, []);
-    bySignature.get(signature).push(index);
+/**
+ * Muvaffaqiyatsiz yuklash darhol qaytariladi, shuning uchun faqat yonma-yon
+ * turgan va vaqt jihatidan yaqin guruhlar solishtiriladi. Bir xil rasm turli
+ * productlarda ishlatilishi mumkin, shuning uchun butun ro'yxat bo'yicha
+ * solishtirish yaramaydi.
+ */
+function findRetryGroups(groups, windowMs) {
+  const retryIndexes = new Set();
+
+  for (let index = 1; index < groups.length; index += 1) {
+    const prev = groups[index - 1];
+    const current = groups[index];
+    const gap = current[0].ms - prev[prev.length - 1].ms;
+    if (gap > windowMs) continue;
+    if (groupSignature(prev) !== groupSignature(current)) continue;
+    retryIndexes.add(index - 1);
   }
 
-  const duplicates = [];
-  for (const [signature, indexes] of bySignature.entries()) {
-    if (indexes.length > 1) {
-      duplicates.push({ signature, indexes });
-    }
-  }
-  return duplicates;
+  return retryIndexes;
 }
 
 async function loadDb(client) {
@@ -180,16 +185,8 @@ async function main() {
   const catalogByHash = readCatalogHashes();
 
   const groups = clusterByGap(partFiles, gapMs);
-  const duplicates = findDuplicateGroups(groups);
-
-  const duplicateIndexes = new Set();
-  for (const item of duplicates) {
-    for (const index of item.indexes.slice(0, -1)) {
-      duplicateIndexes.add(index);
-    }
-  }
-
-  const cleanGroups = groups.filter((_, index) => !duplicateIndexes.has(index));
+  const retryIndexes = findRetryGroups(groups, RETRY_WINDOW_MS);
+  const cleanGroups = groups.filter((_, index) => !retryIndexes.has(index));
 
   const client = new Client({
     host: process.env.DB_HOST || 'localhost',
@@ -210,7 +207,7 @@ async function main() {
     console.log(`uploads/parts: ${partFiles.length} fayl`);
     console.log(`Vaqt oralig'i: ${gapMs} ms`);
     console.log(`Guruhlar: ${groups.length}`);
-    console.log(`Mazmuni bir xil (takror) guruhlar: ${duplicateIndexes.size} ta olib tashlandi`);
+    console.log(`Qayta yuklash izlari: ${retryIndexes.size} ta olib tashlandi`);
     console.log(`Tozalangandan keyin: ${cleanGroups.length} guruh`);
     console.log(`Productlar: ${parts.length}`);
 
