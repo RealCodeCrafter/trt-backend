@@ -22,6 +22,7 @@
     "migrate-image-urls": "node scripts/migrate-image-urls.js",
     "migrate-image-urls:apply": "node scripts/migrate-image-urls.js --apply",
     "analyze-part-images": "node scripts/analyze-part-images.js",
+    "match-part-images": "node scripts/match-part-images.js",
     "restore-part-images": "node scripts/restore-part-images.js",
     "restore-part-images:apply": "node scripts/restore-part-images.js --apply",
     "revert-part-images": "node scripts/revert-part-images.js",
