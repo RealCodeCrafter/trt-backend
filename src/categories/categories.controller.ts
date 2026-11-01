@@ -1,5 +1,23 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, UseInterceptors, UploadedFiles } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+  ParseIntPipe,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CategoryService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -30,7 +48,10 @@ export class CategoriesController {
           description:
             'JSON string. Example: {"en":{"name":"Brake Parts","description":"..."},"ru":{"name":"...","description":"..."}}',
         },
-        parts: { type: 'string', description: 'JSON number array string. Example: [1,2,3]' },
+        parts: {
+          type: 'string',
+          description: 'JSON number array string. Example: [1,2,3]',
+        },
         images: {
           type: 'array',
           items: { type: 'string', format: 'binary' },
@@ -50,8 +71,12 @@ export class CategoriesController {
           cb(null, uploadPath);
         },
         filename: (req, file, callback) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-          callback(null, 'category-' + uniqueSuffix + extname(file.originalname));
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          callback(
+            null,
+            'category-' + uniqueSuffix + extname(file.originalname),
+          );
         },
       }),
     }),
@@ -70,8 +95,8 @@ export class CategoriesController {
 
   @Get(':id')
   @ApiParam({ name: 'id', required: true, type: Number })
-  async findOne(@Param('id') id: string) {
-    return await this.categoryService.findOne(+id);
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    return await this.categoryService.findOne(id);
   }
 
   @UseGuards(AuthGuard, RolesGuard)
@@ -105,18 +130,26 @@ export class CategoriesController {
           cb(null, uploadPath);
         },
         filename: (req, file, callback) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-          callback(null, 'category-' + uniqueSuffix + extname(file.originalname));
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          callback(
+            null,
+            'category-' + uniqueSuffix + extname(file.originalname),
+          );
         },
       }),
     }),
   )
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateCategoryDto: UpdateCategoryDto,
     @UploadedFiles() files?: Express.Multer.File[],
   ) {
-    return await this.categoryService.updateCategory(+id, updateCategoryDto, files);
+    return await this.categoryService.updateCategory(
+      id,
+      updateCategoryDto,
+      files,
+    );
   }
 
   @UseGuards(AuthGuard, RolesGuard)
@@ -124,7 +157,7 @@ export class CategoriesController {
   @Delete(':id')
   @ApiBearerAuth('bearer')
   @ApiParam({ name: 'id', required: true, type: Number })
-  async remove(@Param('id') id: string) {
-    return await this.categoryService.remove(+id);
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    return await this.categoryService.remove(id);
   }
 }
